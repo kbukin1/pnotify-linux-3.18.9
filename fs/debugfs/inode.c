@@ -97,7 +97,7 @@ static int debugfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	res = debugfs_mknod(dir, dentry, mode, 0, NULL, NULL);
 	if (!res) {
 		inc_nlink(dir);
-		fsnotify_mkdir(dir, dentry);
+		fsnotify_mkdir(dir, dentry, 0);
 	}
 	return res;
 }
@@ -117,7 +117,7 @@ static int debugfs_create(struct inode *dir, struct dentry *dentry, umode_t mode
 	mode = (mode & S_IALLUGO) | S_IFREG;
 	res = debugfs_mknod(dir, dentry, mode, 0, data, fops);
 	if (!res)
-		fsnotify_create(dir, dentry);
+		fsnotify_create(dir, dentry, 0);
 	return res;
 }
 
@@ -646,7 +646,7 @@ struct dentry *debugfs_rename(struct dentry *old_dir, struct dentry *old_dentry,
 	d_move(old_dentry, dentry);
 	fsnotify_move(old_dir->d_inode, new_dir->d_inode, old_name,
 		S_ISDIR(old_dentry->d_inode->i_mode),
-		NULL, old_dentry);
+		NULL, old_dentry, 0, 0);
 	fsnotify_oldname_free(old_name);
 	unlock_rename(new_dir, old_dir);
 	dput(dentry);
