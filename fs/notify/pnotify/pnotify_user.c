@@ -1058,7 +1058,6 @@ SYSCALL_DEFINE0(pnotify_init)
 	struct fsnotify_group *group;
 	int ret;
 
-	return -ENOENT;
 #ifndef CONFIG_PNOTIFY_USER
 	return -ENOENT;
 #endif
@@ -1088,20 +1087,20 @@ SYSCALL_DEFINE4(pnotify_add_watch, int, events_fd, u32, pid, u32, mask,
 		u32, flags)
 {
 	struct fsnotify_group *group;
-	struct file *filp;
-	int ret, fput_needed;
-	return -ENOENT;
-#if 0
+  struct fd f;
+	int ret;
 	ret = pnotify_perm_check(pid);
 	if (ret)
 		return ret;
 
-	filp = fget_light(events_fd, &fput_needed);
-	if (unlikely(!filp))
-		return -EBADF;
+  // KB_TODO: verify if mask has a valid value
+
+  f = fdget(events_fd);
+  if (unlikely(!f.file))
+    return -EBADF; 
 
 	/* verify that this is really a pnotify instance */
-	if (unlikely(filp->f_op != &pnotify_fops)) {
+  if (unlikely(f.file->f_op != &pnotify_fops)) { 
 		ret = -EINVAL;
 		goto fput_and_out;
 	}
@@ -1111,13 +1110,12 @@ SYSCALL_DEFINE4(pnotify_add_watch, int, events_fd, u32, pid, u32, mask,
 		      __func__, events_fd, mask, flags, pid);
 
 	/* group is held in place by fget on fd */
-	group = filp->private_data;
+  group = f.file->private_data;
 
 	/* create/update an inode mark */
 	ret = pnotify_update_watch(group, pid, mask);
 fput_and_out:
-	fput_light(filp, fput_needed);
-#endif
+  fdput(f);
 	return ret;
 }
 
