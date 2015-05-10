@@ -191,7 +191,7 @@ static int round_event_name_len(struct fsnotify_event *fsn_event)
  *
  * Called with the group->notification_mutex held.
  */
-static struct fsnotify_event *get_one_event(struct fsnotify_group *group,
+static struct fsnotify_event *pnotify_get_one_event(struct fsnotify_group *group,
 					    size_t count)
 {
 	size_t event_size = sizeof(struct pnotify_event);
@@ -279,10 +279,8 @@ static ssize_t pnotify_copy_event_to_user(struct fsnotify_group *group,
 }
 
 static ssize_t pnotify_read(struct file *file, char __user *buf,
-			    size_t count, loff_t *pos)
+			                      size_t count, loff_t *pos)
 {
-	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE,"XXX: %s: buf=%s\n", __func__, buf);
-#if 0
 	struct fsnotify_group *group;
 	struct fsnotify_event *kevent;
 	char __user *start;
@@ -293,8 +291,7 @@ static ssize_t pnotify_read(struct file *file, char __user *buf,
 	group = file->private_data;
 
 	while (1) {
-		prepare_to_wait(&group->notification_waitq, &wait,
-				TASK_INTERRUPTIBLE);
+		prepare_to_wait(&group->notification_waitq, &wait, TASK_INTERRUPTIBLE);
 
 		mutex_lock(&group->notification_mutex);
 		kevent = pnotify_get_one_event(group, count);
@@ -307,7 +304,7 @@ static ssize_t pnotify_read(struct file *file, char __user *buf,
 			if (IS_ERR(kevent))
 				break;
 			ret = pnotify_copy_event_to_user(group, kevent, buf);
-			fsnotify_put_event(kevent);
+			fsnotify_destroy_event(group, kevent);
 			if (ret < 0)
 				break;
 			buf += ret;
@@ -318,7 +315,7 @@ static ssize_t pnotify_read(struct file *file, char __user *buf,
 		ret = -EAGAIN;
 		if (file->f_flags & O_NONBLOCK)
 			break;
-		ret = -EINTR;
+		ret = -ERESTARTSYS;
 		if (signal_pending(current))
 			break;
 
@@ -332,8 +329,6 @@ static ssize_t pnotify_read(struct file *file, char __user *buf,
 	if (start != buf && ret != -EFAULT)
 		ret = buf - start;
 	return ret;
-#endif
-  return 0;
 }
 
 static int pnotify_fasync(int fd, struct file *file, int on)
