@@ -76,6 +76,7 @@ static bool pnotify_event_compare(struct fsnotify_event *old, struct fsnotify_ev
 	return false;
 }
 
+#if 0
 static struct fsnotify_event *pnotify_merge(struct list_head *list,
 					    struct fsnotify_event *event)
 {
@@ -96,7 +97,86 @@ static struct fsnotify_event *pnotify_merge(struct list_head *list,
 #endif
 	return last_event;
 }
+#endif
 
+static int pnotify_merge(struct list_head *list,
+			                   struct fsnotify_event *event)
+{
+	struct fsnotify_event *last_event;
+
+	last_event = list_entry(list->prev, struct fsnotify_event, list);
+	return pnotify_event_compare(last_event, event);
+}
+
+int pnotify_handle_event(struct fsnotify_group *group,
+			                   struct inode *inode,
+                         struct fsnotify_mark *inode_mark,
+                         struct fsnotify_mark *vfsmount_mark,
+                         u32 mask, void *data, int data_type,
+                         const unsigned char *file_name, u32 cookie,
+                         pid_t tgid, pid_t pid, pid_t ppid, 
+                         struct path *path, unsigned long status)
+{
+	struct pnotify_inode_mark *i_mark;
+	struct pnotify_event_info *event;
+	struct fsnotify_event *fsn_event;
+	int ret;
+	int len = 0;
+	int alloc_len = sizeof(struct pnotify_event_info);
+
+	BUG_ON(vfsmount_mark);
+
+	if ((inode_mark->mask & FS_EXCL_UNLINK) &&
+	    (data_type == FSNOTIFY_EVENT_PATH)) {
+		struct path *path = data;
+
+		if (d_unlinked(path->dentry))
+			return 0;
+	}
+	if (file_name) {
+		len = strlen(file_name);
+		alloc_len += len + 1;
+	}
+
+	pr_debug("%s: group=%p inode=%p mask=%x\n", __func__, group, inode,
+		 mask);
+
+	i_mark = container_of(inode_mark, struct pnotify_inode_mark,
+			      fsn_mark);
+
+	event = kmalloc(alloc_len, GFP_KERNEL);
+	if (unlikely(!event))
+		return -ENOMEM;
+
+	fsn_event = &event->fse;
+	fsnotify_init_event(fsn_event, inode, mask);
+	event->wd = i_mark->wd;
+	event->sync_cookie = cookie;
+	event->name_len = len;
+
+	event->tgid = tgid;
+	event->pid = pid;
+	event->ppid = ppid;
+	// event->jiffies = 
+	// event->inode_num;
+	event->status = status;
+
+	if (len)
+		strcpy(event->name, file_name);
+
+	ret = fsnotify_add_event(group, fsn_event, pnotify_merge);
+	if (ret) {
+		/* Our event wasn't used in the end. Free it. */
+		fsnotify_destroy_event(group, fsn_event);
+	}
+
+	if (inode_mark->mask & IN_ONESHOT)
+		fsnotify_destroy_mark(inode_mark, group);
+
+	return 0;
+}
+
+#if 0
 static int pnotify_handle_event(struct fsnotify_group *group,
 				struct fsnotify_mark *inode_mark,
 				struct fsnotify_mark *vfsmount_mark,
@@ -145,6 +225,7 @@ static int pnotify_handle_event(struct fsnotify_group *group,
 #endif
 	return ret;
 }
+#endif
 
 static void pnotify_freeing_mark(struct fsnotify_mark *fsn_mark, struct fsnotify_group *group)
 {
@@ -199,7 +280,7 @@ static void pnotify_free_group_priv(struct fsnotify_group *group)
 	struct pnotify_wd_pid_struct *pos, *tmp;
 	struct list_head local_list;
 	INIT_LIST_HEAD(&local_list);
-	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX2\n");
+	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX2\n", __func__);
 #if 0
 	/* ideally the idr is empty and we won't hit the BUG in the callback */
 	idr_for_each(&group->pnotify_data.idr, idr_callback, group);
@@ -237,7 +318,7 @@ void pnotify_free_event_priv(struct fsnotify_event_private_data *fsn_event_priv)
 {
 	struct pnotify_event_private_data *event_priv;
 
-	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX3\n");
+	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX3\n", __func__);
 #if 0
 	event_priv = container_of(fsn_event_priv, struct pnotify_event_private_data,
 				  fsnotify_event_priv_data);
