@@ -206,8 +206,8 @@ static inline void fsnotify_access(struct file *file, ssize_t count)
 		mask |= FS_ISDIR;
 
 	if (!(file->f_mode & FMODE_NONOTIFY)) {
-		fsnotify_parent(path, NULL, mask, 0);
-		fsnotify(inode, mask, path, FSNOTIFY_EVENT_PATH, NULL, 0, 0, 0);
+		fsnotify_parent(path, NULL, mask, NULL);
+		fsnotify(inode, mask, path, FSNOTIFY_EVENT_PATH, NULL, 0, NULL, count);
 	}
 }
 

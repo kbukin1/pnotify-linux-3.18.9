@@ -138,8 +138,11 @@ int pnotify_handle_event(struct fsnotify_group *group,
 		alloc_len += len + 1;
 	}
 
-	pr_debug("%s: group=%p inode=%p mask=%x\n", __func__, group, inode,
-		 mask);
+	pr_debug("%s: group=%p inode=%p mask=%x\n", __func__, 
+      group, inode, mask);
+	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, 
+      "%s: group=%p inode=%p mask=%x path=%p\n", __func__, 
+      group, inode, mask, path);
 
 	i_mark = container_of(inode_mark, struct pnotify_inode_mark,
 			      fsn_mark);
@@ -157,9 +160,9 @@ int pnotify_handle_event(struct fsnotify_group *group,
 	event->tgid = tgid;
 	event->pid = pid;
 	event->ppid = ppid;
-	// event->jiffies = 
-	// event->inode_num;
 	event->status = status;
+	event->jiffies = get_jiffies_64();
+	event->inode_num = path ? path->dentry->d_inode->i_ino : 0;
 
 	if (len)
 		strcpy(event->name, file_name);
