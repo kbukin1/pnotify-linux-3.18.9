@@ -108,6 +108,8 @@ static int pnotify_handle_event(struct fsnotify_group *group,
 	struct fsnotify_event_private_data *fsn_event_priv;
 	struct fsnotify_event *added_event;
 	int wd, ret = 0;
+
+	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX1\n");
 #if 0
 	pr_debug("%s: group=%p event=%p to_tell=%p mask=%x\n", __func__, group,
 		 event, event->to_tell, event->mask);
@@ -197,6 +199,7 @@ static void pnotify_free_group_priv(struct fsnotify_group *group)
 	struct pnotify_wd_pid_struct *pos, *tmp;
 	struct list_head local_list;
 	INIT_LIST_HEAD(&local_list);
+	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX2\n");
 #if 0
 	/* ideally the idr is empty and we won't hit the BUG in the callback */
 	idr_for_each(&group->pnotify_data.idr, idr_callback, group);
@@ -234,6 +237,7 @@ void pnotify_free_event_priv(struct fsnotify_event_private_data *fsn_event_priv)
 {
 	struct pnotify_event_private_data *event_priv;
 
+	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX3\n");
 #if 0
 	event_priv = container_of(fsn_event_priv, struct pnotify_event_private_data,
 				  fsnotify_event_priv_data);
