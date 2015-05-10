@@ -421,27 +421,23 @@ static const struct file_operations pnotify_fops = {
 
 
 static int pnotify_add_to_idr(struct idr *idr, spinlock_t *idr_lock,
-			      int *last_wd,
 			      struct pnotify_inode_mark *i_mark)
 {
 	int ret;
-#if 0
-	do {
-		if (unlikely(!idr_pre_get(idr, GFP_KERNEL)))
-			return -ENOMEM;
 
-		spin_lock(idr_lock);
-		ret = idr_get_new_above(idr, i_mark, *last_wd + 1,
-					&i_mark->wd);
+	idr_preload(GFP_KERNEL);
+	spin_lock(idr_lock);
+
+	ret = idr_alloc_cyclic(idr, i_mark, 1, 0, GFP_NOWAIT);
+	if (ret >= 0) {
 		/* we added the mark to the idr, take a reference */
-		if (!ret) {
-			*last_wd = i_mark->wd;
-			fsnotify_get_mark(&i_mark->fsn_mark);
-		}
-		spin_unlock(idr_lock);
-	} while (ret == -EAGAIN);
-#endif
-	return ret;
+		i_mark->wd = ret;
+		fsnotify_get_mark(&i_mark->fsn_mark);
+	}
+
+	spin_unlock(idr_lock);
+	idr_preload_end();
+	return ret < 0 ? ret : 0;
 }
 
 static
@@ -949,8 +945,7 @@ int pnotify_new_watch(struct fsnotify_group *group, u32 pid, u32 arg)
 			pnotify_max_user_watches)
 		goto out_err;
 
-	ret = pnotify_add_to_idr(idr, idr_lock, &group->pnotify_data.last_wd,
-				 tmp_i_mark);
+	ret = pnotify_add_to_idr(idr, idr_lock, tmp_i_mark);
 	if (ret)
 		goto out_err;
 
