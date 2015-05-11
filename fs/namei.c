@@ -2554,7 +2554,7 @@ int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		return error;
 	error = dir->i_op->create(dir, dentry, mode, want_excl);
 	if (!error)
-		fsnotify_create(dir, dentry, 0);
+		fsnotify_create(dir, dentry, path);
 	return error;
 }
 EXPORT_SYMBOL(vfs_create);
@@ -2909,6 +2909,7 @@ out_dput:
 /*
  * Handle the last step of open()
  */
+/* KB_TODO: need to hook up with notify? */
 static int do_last(struct nameidata *nd, struct path *path,
 		   struct file *file, const struct open_flags *op,
 		   int *opened, struct filename *name)
@@ -3430,7 +3431,7 @@ int vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev,
 
 	error = dir->i_op->mknod(dir, dentry, mode, dev);
 	if (!error)
-		fsnotify_create(dir, dentry, 0);
+		fsnotify_create(dir, dentry, path);
 	return error;
 }
 EXPORT_SYMBOL(vfs_mknod);
@@ -3475,14 +3476,14 @@ retry:
 		goto out;
 	switch (mode & S_IFMT) {
 		case 0: case S_IFREG:
-			error = vfs_create(path.dentry->d_inode,dentry,mode,true, 0);
+			error = vfs_create(path.dentry->d_inode,dentry,mode,true, &path);
 			break;
 		case S_IFCHR: case S_IFBLK:
 			error = vfs_mknod(path.dentry->d_inode,dentry,mode,
-					new_decode_dev(dev), 0);
+					new_decode_dev(dev), &path);
 			break;
 		case S_IFIFO: case S_IFSOCK:
-			error = vfs_mknod(path.dentry->d_inode,dentry,mode,0,0);
+			error = vfs_mknod(path.dentry->d_inode,dentry,mode,0,&path);
 			break;
 	}
 out:
@@ -3520,7 +3521,7 @@ int vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode, struct pat
 
 	error = dir->i_op->mkdir(dir, dentry, mode);
 	if (!error)
-		fsnotify_mkdir(dir, dentry, 0);
+		fsnotify_mkdir(dir, dentry, path);
 	return error;
 }
 EXPORT_SYMBOL(vfs_mkdir);
@@ -3541,7 +3542,7 @@ retry:
 		mode &= ~current_umask();
 	error = security_path_mkdir(&path, dentry, mode);
 	if (!error)
-		error = vfs_mkdir(path.dentry->d_inode, dentry, mode, 0);
+		error = vfs_mkdir(path.dentry->d_inode, dentry, mode, &path);
 	done_path_create(&path, dentry);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
@@ -3731,7 +3732,7 @@ out:
 
 	/* We don't d_delete() NFS sillyrenamed files--they still exist. */
 	if (!error && !(dentry->d_flags & DCACHE_NFSFS_RENAMED)) {
-		fsnotify_link_count(target, 0);
+		fsnotify_link_count(target, path);
 		d_delete(dentry);
 	}
 
@@ -3782,7 +3783,7 @@ retry_deleg:
 		error = security_path_unlink(&nd.path, dentry);
 		if (error)
 			goto exit2;
-		error = vfs_unlink(nd.path.dentry->d_inode, dentry, &delegated_inode, 0);
+		error = vfs_unlink(nd.path.dentry->d_inode, dentry, &delegated_inode, &nd.path);
 exit2:
 		dput(dentry);
 	}
@@ -3848,7 +3849,7 @@ int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname, s
 
 	error = dir->i_op->symlink(dir, dentry, oldname);
 	if (!error)
-		fsnotify_create(dir, dentry, 0);
+		fsnotify_create(dir, dentry, path);
 	return error;
 }
 EXPORT_SYMBOL(vfs_symlink);
@@ -3873,7 +3874,7 @@ retry:
 
 	error = security_path_symlink(&path, dentry, from->name);
 	if (!error)
-		error = vfs_symlink(path.dentry->d_inode, dentry, from->name, 0);
+		error = vfs_symlink(path.dentry->d_inode, dentry, from->name, &path);
 	done_path_create(&path, dentry);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
@@ -3957,7 +3958,7 @@ int vfs_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_de
 	}
 	mutex_unlock(&inode->i_mutex);
 	if (!error)
-		fsnotify_link(dir, inode, new_dentry, 0);
+		fsnotify_link(dir, inode, new_dentry, path);
 	return error;
 }
 EXPORT_SYMBOL(vfs_link);
@@ -4015,7 +4016,7 @@ retry:
 	error = security_path_link(old_path.dentry, &new_path, new_dentry);
 	if (error)
 		goto out_dput;
-	error = vfs_link(old_path.dentry, new_path.dentry->d_inode, new_dentry, &delegated_inode, 0);
+	error = vfs_link(old_path.dentry, new_path.dentry->d_inode, new_dentry, &delegated_inode, &new_path);
 out_dput:
 	done_path_create(&new_path, new_dentry);
 	if (delegated_inode) {
