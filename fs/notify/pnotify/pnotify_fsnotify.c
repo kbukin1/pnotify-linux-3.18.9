@@ -195,7 +195,7 @@ int pnotify_handle_event(struct fsnotify_group *group,
                          u32 mask, void *data, int data_type,
                          const unsigned char *file_name, u32 cookie,
                          pid_t tgid, pid_t pid, pid_t ppid, 
-                         struct path *pnotify_path /* need to revisit */ , unsigned long status)
+                         struct path *path_for_inode_events /* KB_TODO: need to revisit */ , unsigned long status)
 {
 	struct pnotify_inode_mark *i_mark;
 	struct pnotify_event_info *event;
@@ -222,8 +222,8 @@ int pnotify_handle_event(struct fsnotify_group *group,
 	pr_debug("%s: group=%p inode=%p mask=%x\n", __func__, 
       group, inode, mask);
 	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, 
-      "%s: group=%p data_type=%d inode=%p mask=%x path=%p data=%p\n", __func__, 
-      group, data_type, inode, mask, pnotify_path, data);
+      "%s: group=%p data_type=%d inode=%p mask=%x path_for_inode_events=%p data=%p\n", __func__, 
+      group, data_type, inode, mask, path_for_inode_events, data);
 
 	i_mark = container_of(inode_mark, struct pnotify_inode_mark,
 			      fsn_mark);
@@ -263,16 +263,33 @@ int pnotify_handle_event(struct fsnotify_group *group,
         }
        }
        break;
-    case FSNOTIFY_EVENT_INODE:
-      BUG(); // KB_TODO take care of this later
+    case FSNOTIFY_EVENT_INODE: {
+      struct inode *inode = data;
+      if (pid) {
+        if (inode) {
+          event->inode_num = inode->i_ino;
+          ret = pnotify_fullpath_from_path(event, path_for_inode_events, file_name);
+          if (ret < 0) {
+            pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
+                "%s: mask 0x%0x data_type=%d, "
+                "FULL_PATH_FROM_PATH(1) FAILED, "
+                "pid %u: %d\n", __func__, mask,
+                data_type, pid, ret);
+          }
+        }
+       }
+      }
       break;
     case FSNOTIFY_EVENT_NONE:
-      BUG(); // KB_TODO take care of this later
+      event->inode_num = 0;
+      event->name = NULL;
+      event->name_len = 0;
       break;
     default:
       BUG();
   }
 
+  // KB_TODO : review
 	// if (len)
 		// strcpy(event->name, file_name);
 
@@ -291,14 +308,6 @@ int pnotify_handle_event(struct fsnotify_group *group,
 static void pnotify_freeing_mark(struct fsnotify_mark *fsn_mark, struct fsnotify_group *group)
 {
 	pnotify_ignored_and_remove_idr(fsn_mark, group);
-}
-
-static bool pnotify_should_send_event(struct fsnotify_group *group, struct inode *inode,
-				      struct fsnotify_mark *inode_mark,
-				      struct fsnotify_mark *vfsmount_mark,
-				      __u32 mask, void *data, int data_type)
-{
-	return true;
 }
 
 /*
@@ -338,61 +347,24 @@ static int idr_callback(int id, void *p, void *data)
 
 static void pnotify_free_group_priv(struct fsnotify_group *group)
 {
-	struct pnotify_wd_pid_struct *pos, *tmp;
-	struct list_head local_list;
-	INIT_LIST_HEAD(&local_list);
-	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX2\n", __func__);
-#if 0
 	/* ideally the idr is empty and we won't hit the BUG in the callback */
 	idr_for_each(&group->pnotify_data.idr, idr_callback, group);
-	idr_remove_all(&group->pnotify_data.idr);
 	idr_destroy(&group->pnotify_data.idr);
-	atomic_dec(&group->pnotify_data.user->pnotify_devs);
-	free_uid(group->pnotify_data.user);
-
-	spin_lock(&group->pnotify_data.wd_pid_lock);
-
-	list_for_each_entry_safe(pos, tmp,
-				 &group->pnotify_data.wd_pid_list,
-				 pnotify_wd_pid_list_item) {
-
-		pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE,
-			      "%s: deleting entry group: %p, wd=%d, pid=%u\n",
-			      __func__, group, pos->wd, pos->pid);
-
-		list_del_init(&pos->pnotify_wd_pid_list_item);
-		list_add_tail(&pos->pnotify_wd_pid_list_item, &local_list);
+	if (group->pnotify_data.user) {
+		atomic_dec(&group->pnotify_data.user->pnotify_devs);
+		free_uid(group->pnotify_data.user);
 	}
-	spin_unlock(&group->pnotify_data.wd_pid_lock);
-
-	/* Now that the list items are on a local list, they can be safely
-	   deleted without holding any locks */
-	list_for_each_entry_safe(pos, tmp, &local_list,
-				 pnotify_wd_pid_list_item) {
-		list_del(&pos->pnotify_wd_pid_list_item);
-		kmem_cache_free(pnotify_wd_pid_cachep, pos);
-	}
-#endif
 }
 
-void pnotify_free_event_priv(struct fsnotify_event_private_data *fsn_event_priv)
+static void pnotify_free_event(struct fsnotify_event *fsn_event)
 {
-	struct pnotify_event_private_data *event_priv;
-
-	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, "%s: XXX3\n", __func__);
-#if 0
-	event_priv = container_of(fsn_event_priv, struct pnotify_event_private_data,
-				  fsnotify_event_priv_data);
-
-	kmem_cache_free(pnotify_event_priv_cachep, event_priv);
-#endif
+	kfree(PNOTIFY_E(fsn_event));
 }
 
 const struct fsnotify_ops pnotify_fsnotify_ops = {
-	.handle_event = pnotify_handle_event,
-	// .should_send_event = pnotify_should_send_event,
+	.handle_event = pnotify_handle_event, 
 	.free_group_priv = pnotify_free_group_priv,
-	// .free_event_priv = pnotify_free_event_priv,
-	.free_event = pnotify_free_event_priv,
-	.freeing_mark = pnotify_freeing_mark,
+	.free_event = pnotify_free_event,
+	.freeing_mark = pnotify_freeing_mark, 
 };
+
