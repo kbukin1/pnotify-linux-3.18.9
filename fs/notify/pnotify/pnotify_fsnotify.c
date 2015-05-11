@@ -367,4 +367,3 @@ const struct fsnotify_ops pnotify_fsnotify_ops = {
 	.free_event = pnotify_free_event,
 	.freeing_mark = pnotify_freeing_mark, 
 };
-
