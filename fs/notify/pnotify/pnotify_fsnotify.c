@@ -133,27 +133,27 @@ static int pnotify_fullpath_from_path(struct pnotify_event_info *event,
 	pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
 		      "%s: event jiffies: 0x%0llx, path: 0x%p (denty: %p),"
 		      "(event->inode_num: %lu), name: %s\n",
-		      __func__, event->jiffies, path_arg, path_arg->dentry,
+		      __func__, event->jiffies, path_arg, path_arg ? path_arg->dentry : NULL,
           event->inode_num,
 		      (char*)(name ? name : (const unsigned char*)"NULL"));
 
-	if (path_arg && current->fs /* KB_TODO: need to understand this current->fs hack */ ) {
-		page = (char *) __get_free_page(GFP_KERNEL);
-		if (!page)
-			return -ENOMEM;
+  if (path_arg && current->fs /* KB_TODO: need to understand this current->fs hack */ ) {
+    page = (char *) __get_free_page(GFP_KERNEL);
+    if (!page)
+      return -ENOMEM;
 
-		path_name = d_path(path_arg, page, buflen);
+    path_name = d_path(path_arg, page, buflen);
 
-		if (IS_ERR(path_name)) {
-			pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
-				      "%s: dpath failed(1): %d (jiffies: 0x%llx, "
-				      "pid: %u, event_inode_num: %lu)\n",
-				      __func__, (int)(long)path_name,
-				      event->jiffies, event->pid,
-				      event->inode_num);
-			path_name = NULL;
-		}
-	}
+    if (IS_ERR(path_name)) {
+      pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
+          "%s: dpath failed(1): %d (jiffies: 0x%llx, "
+          "pid: %u, event_inode_num: %lu)\n",
+          __func__, (int)(long)path_name,
+          event->jiffies, event->pid,
+          event->inode_num);
+      path_name = NULL;
+    }
+  }
 
 	if (name) {
 		second_page = (char *) __get_free_page(GFP_KERNEL);
