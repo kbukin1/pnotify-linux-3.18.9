@@ -314,7 +314,7 @@ static void dentry_iput(struct dentry * dentry)
 		spin_unlock(&dentry->d_lock);
 		spin_unlock(&inode->i_lock);
 		if (!inode->i_nlink)
-			fsnotify_inoderemove(inode, 0);
+			fsnotify_inoderemove(inode, NULL);
 		if (dentry->d_op && dentry->d_op->d_iput)
 			dentry->d_op->d_iput(dentry, inode);
 		else
@@ -340,7 +340,7 @@ static void dentry_unlink_inode(struct dentry * dentry)
 	spin_unlock(&dentry->d_lock);
 	spin_unlock(&inode->i_lock);
 	if (!inode->i_nlink)
-		fsnotify_inoderemove(inode, 0);
+		fsnotify_inoderemove(inode, NULL);
 	if (dentry->d_op && dentry->d_op->d_iput)
 		dentry->d_op->d_iput(dentry, inode);
 	else
@@ -2290,7 +2290,7 @@ again:
 		}
 		dentry->d_flags &= ~DCACHE_CANT_MOUNT;
 		dentry_unlink_inode(dentry);
-		fsnotify_nameremove(dentry, isdir, 0);
+		fsnotify_nameremove(dentry, isdir, NULL);
 		return;
 	}
 
@@ -2299,7 +2299,7 @@ again:
 
 	spin_unlock(&dentry->d_lock);
 
-	fsnotify_nameremove(dentry, isdir, 0);
+	fsnotify_nameremove(dentry, isdir, NULL);
 }
 EXPORT_SYMBOL(d_delete);
 
