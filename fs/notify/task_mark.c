@@ -39,7 +39,6 @@
 static void fsnotify_recalc_task_mask_locked(struct task_struct *task)
 {
 	struct fsnotify_mark *mark;
-	struct hlist_node *pos;
 	__u32 new_mask = 0;
 
 	assert_spin_locked(&task->alloc_lock);
@@ -95,7 +94,7 @@ void fsnotify_destroy_task_mark(struct fsnotify_mark *mark)
 void fsnotify_clear_marks_by_task(struct task_struct *task)
 {
 	struct fsnotify_mark *mark, *lmark;
-	struct hlist_node *pos, *n;
+	struct hlist_node *n;
 	LIST_HEAD(free_list);
 
 	task_lock(task);
@@ -136,7 +135,6 @@ struct fsnotify_mark *fsnotify_find_task_mark_locked(struct fsnotify_group *grou
 						     struct task_struct *task)
 {
 	struct fsnotify_mark *mark;
-	struct hlist_node *pos;
 
 	assert_spin_locked(&task->alloc_lock);
 
@@ -203,7 +201,7 @@ int fsnotify_add_task_mark(struct fsnotify_mark *mark,
 			   int allow_dups)
 {
 	struct fsnotify_mark *lmark;
-	struct hlist_node *node, *last = NULL;
+	struct hlist_node *node = NULL, *last = NULL;
 	int ret = 0;
 
 	mark->flags |= FSNOTIFY_MARK_FLAG_TASK;
