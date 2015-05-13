@@ -126,7 +126,11 @@ EXPORT_SYMBOL_GPL(__fsnotify_parent);
 
 static inline int has_pnotify_tracking(struct task_struct * task)
 {
+#ifdef CONFIG_PNOTIFY_USER
 	return !hlist_empty(&task->pnotify_marks);
+#else
+  return 0;
+#endif
 }
 
 static int send_to_group(struct inode *to_tell,
@@ -265,10 +269,12 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 					      &fsnotify_mark_srcu);
 	}
 
+#ifdef CONFIG_PNOTIFY_USER
   if (is_pnotify_event) {
     task_node = srcu_dereference(current->pnotify_marks.first,
         &fsnotify_mark_srcu);
   }
+#endif
 
 	/*
 	 * We need to merge inode & vfsmount mark lists so that inode mark
