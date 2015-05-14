@@ -313,8 +313,8 @@ static inline void fsnotify_change(struct dentry *dentry, unsigned int ia_valid,
 		if (S_ISDIR(inode->i_mode))
 			mask |= FS_ISDIR;
 
-		fsnotify_parent(NULL, dentry, mask, path);
-		fsnotify(inode, mask, inode, FSNOTIFY_EVENT_INODE, NULL, 0, path, 0);
+  fsnotify_parent(NULL, dentry, mask, path);
+  fsnotify(inode, mask, inode, FSNOTIFY_EVENT_INODE, NULL, 0, path, 0);
 	}
 }
 
