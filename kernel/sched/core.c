@@ -7139,6 +7139,11 @@ void __init sched_init(void)
 	INIT_HLIST_HEAD(&init_task.preempt_notifiers);
 #endif
 
+#ifdef CONFIG_PNOTIFY_USER
+  INIT_HLIST_HEAD(&init_task.pnotify_marks);
+  init_task.pnotify_mask = 0;
+#endif
+
 	/*
 	 * The boot idle thread does lazy MMU switching as well:
 	 */

@@ -99,7 +99,9 @@ struct fsnotify_ops {
 			    struct fsnotify_mark *inode_mark,
 			    struct fsnotify_mark *vfsmount_mark,
 			    u32 mask, void *data, int data_type,
-			    const unsigned char *file_name, u32 cookie);
+			    const unsigned char *file_name, u32 cookie,
+          pid_t tgid, pid_t pid, pid_t ppid, 
+          struct path *path, unsigned long status);
 	void (*free_group_priv)(struct fsnotify_group *group);
 	void (*freeing_mark)(struct fsnotify_mark *mark, struct fsnotify_group *group);
 	void (*free_event)(struct fsnotify_event *event);
@@ -264,6 +266,7 @@ struct fsnotify_mark {
 #define FSNOTIFY_MARK_FLAG_OBJECT_PINNED	0x04
 #define FSNOTIFY_MARK_FLAG_IGNORED_SURV_MODIFY	0x08
 #define FSNOTIFY_MARK_FLAG_ALIVE		0x10
+#define FSNOTIFY_MARK_FLAG_TASK     0x20
 	unsigned int flags;		/* vfsmount or inode mark? */
 	struct list_head destroy_list;
 	void (*free_mark)(struct fsnotify_mark *mark); /* called on final put+free */
@@ -398,7 +401,8 @@ extern int fsnotify_add_mark(struct fsnotify_mark *mark, struct fsnotify_group *
                              struct inode *inode, struct vfsmount *mnt,
                              struct task_struct *task, int allow_dups);
 extern int fsnotify_add_mark_locked(struct fsnotify_mark *mark, struct fsnotify_group *group,
-				    struct inode *inode, struct vfsmount *mnt, int allow_dups);
+				                            struct inode *inode, struct vfsmount *mnt, 
+                                    struct task_struct *task, int allow_dups);
 /* given a group and a mark, flag mark to be freed when all references are dropped */
 extern void fsnotify_destroy_mark(struct fsnotify_mark *mark,
 				  struct fsnotify_group *group);
