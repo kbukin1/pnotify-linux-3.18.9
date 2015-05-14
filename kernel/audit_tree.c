@@ -258,7 +258,7 @@ static void untag_chunk(struct node *p)
 		goto Fallback;
 
 	fsnotify_duplicate_mark(&new->mark, entry);
-	if (fsnotify_add_mark(&new->mark, new->mark.group, new->mark.i.inode, NULL, 1)) {
+	if (fsnotify_add_mark(&new->mark, new->mark.group, new->mark.i.inode, NULL, NULL, 1)) {
 		fsnotify_put_mark(&new->mark);
 		goto Fallback;
 	}
@@ -321,7 +321,7 @@ static int create_chunk(struct inode *inode, struct audit_tree *tree)
 		return -ENOMEM;
 
 	entry = &chunk->mark;
-	if (fsnotify_add_mark(entry, audit_tree_group, inode, NULL, 0)) {
+	if (fsnotify_add_mark(entry, audit_tree_group, inode, NULL, NULL, 0)) {
 		fsnotify_put_mark(entry);
 		return -ENOSPC;
 	}
@@ -395,7 +395,7 @@ static int tag_chunk(struct inode *inode, struct audit_tree *tree)
 	}
 
 	fsnotify_duplicate_mark(chunk_entry, old_entry);
-	if (fsnotify_add_mark(chunk_entry, chunk_entry->group, chunk_entry->i.inode, NULL, 1)) {
+	if (fsnotify_add_mark(chunk_entry, chunk_entry->group, chunk_entry->i.inode, NULL, NULL, 1)) {
 		spin_unlock(&old_entry->lock);
 		fsnotify_put_mark(chunk_entry);
 		fsnotify_put_mark(old_entry);
@@ -917,7 +917,9 @@ static int audit_tree_handle_event(struct fsnotify_group *group,
 				   struct fsnotify_mark *inode_mark,
 				   struct fsnotify_mark *vfsmount_mark,
 				   u32 mask, void *data, int data_type,
-				   const unsigned char *file_name, u32 cookie)
+				   const unsigned char *file_name, u32 cookie,
+           pid_t tgid, pid_t pid, pid_t ppid, 
+           struct path *path, unsigned long status)
 {
 	return 0;
 }

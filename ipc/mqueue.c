@@ -754,7 +754,7 @@ static struct file *do_create(struct ipc_namespace *ipc_ns, struct inode *dir,
 	}
 
 	mode &= ~current_umask();
-	ret = vfs_create(dir, path->dentry, mode, true);
+	ret = vfs_create(dir, path->dentry, mode, true, NULL);
 	path->dentry->d_fsdata = NULL;
 	if (ret)
 		return ERR_PTR(ret);
@@ -886,7 +886,7 @@ SYSCALL_DEFINE1(mq_unlink, const char __user *, u_name)
 		err = -ENOENT;
 	} else {
 		ihold(inode);
-		err = vfs_unlink(dentry->d_parent->d_inode, dentry, NULL);
+		err = vfs_unlink(dentry->d_parent->d_inode, dentry, NULL, NULL);
 	}
 	dput(dentry);
 
