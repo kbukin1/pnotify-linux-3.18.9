@@ -157,7 +157,7 @@ static int dev_mkdir(const char *name, umode_t mode)
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	err = vfs_mkdir(path.dentry->d_inode, dentry, mode);
+	err = vfs_mkdir(path.dentry->d_inode, dentry, mode, &path);
 	if (!err)
 		/* mark as kernel-created inode */
 		dentry->d_inode->i_private = &thread;
@@ -207,7 +207,7 @@ static int handle_create(const char *nodename, umode_t mode, kuid_t uid,
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	err = vfs_mknod(path.dentry->d_inode, dentry, mode, dev->devt);
+	err = vfs_mknod(path.dentry->d_inode, dentry, mode, dev->devt, &path);
 	if (!err) {
 		struct iattr newattrs;
 
@@ -324,7 +324,7 @@ static int handle_remove(const char *nodename, struct device *dev)
 			mutex_lock(&dentry->d_inode->i_mutex);
 			notify_change(dentry, &newattrs, NULL);
 			mutex_unlock(&dentry->d_inode->i_mutex);
-			err = vfs_unlink(parent.dentry->d_inode, dentry, NULL);
+			err = vfs_unlink(parent.dentry->d_inode, dentry, NULL, &parent);
 			if (!err || err == -ENOENT)
 				deleted = 1;
 		}
