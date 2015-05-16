@@ -575,6 +575,8 @@ static int ovl_remove_upper(struct dentry *dentry, bool is_dir)
 	struct inode *dir = upperdir->d_inode;
 	struct dentry *upper = ovl_dentry_upper(dentry);
 	int err;
+  struct path upath;
+  ovl_path_upper(upper, &upath);
 
 	mutex_lock_nested(&dir->i_mutex, I_MUTEX_PARENT);
 	err = -ESTALE;
@@ -584,7 +586,7 @@ static int ovl_remove_upper(struct dentry *dentry, bool is_dir)
 		if (is_dir)
 			err = vfs_rmdir(dir, upper);
 		else
-			err = vfs_unlink(dir, upper, NULL);
+			err = vfs_unlink(dir, upper, NULL, &upath);
 		dput(upper);
 		ovl_dentry_version_inc(dentry->d_parent);
 	}
@@ -698,6 +700,7 @@ static int ovl_rename2(struct inode *olddir, struct dentry *old,
 	struct dentry *opaquedir = NULL;
 	const struct cred *old_cred = NULL;
 	struct cred *override_cred = NULL;
+  struct path oldupath;
 
 	err = -EINVAL;
 	if (flags & ~(RENAME_EXCHANGE | RENAME_NOREPLACE))
@@ -818,6 +821,7 @@ static int ovl_rename2(struct inode *olddir, struct dentry *old,
 
 	olddentry = ovl_dentry_upper(old);
 	newdentry = ovl_dentry_upper(new);
+  ovl_path_upper(olddentry, &oldupath);
 	if (newdentry) {
 		if (opaquedir) {
 			newdentry = opaquedir;
@@ -864,7 +868,7 @@ static int ovl_rename2(struct inode *olddir, struct dentry *old,
 		BUG_ON(flags & ~RENAME_EXCHANGE);
 		err = vfs_rename(old_upperdir->d_inode, olddentry,
 				 new_upperdir->d_inode, newdentry,
-				 NULL, flags);
+				 NULL, flags, &oldupath);
 	}
 
 	if (err) {
