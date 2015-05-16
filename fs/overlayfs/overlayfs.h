@@ -9,6 +9,8 @@
 
 #include <linux/kernel.h>
 
+void ovl_path_upper(struct dentry *dentry, struct path *path);
+
 struct ovl_entry;
 
 enum ovl_path_type {
@@ -29,7 +31,10 @@ static inline int ovl_do_rmdir(struct inode *dir, struct dentry *dentry)
 
 static inline int ovl_do_unlink(struct inode *dir, struct dentry *dentry)
 {
-	int err = vfs_unlink(dir, dentry, NULL);
+  int err;
+  struct path upath;
+  ovl_path_upper(dentry, &upath);
+	err = vfs_unlink(dir, dentry, NULL, &upath);
 	pr_debug("unlink(%pd2) = %i\n", dentry, err);
 	return err;
 }
@@ -37,7 +42,10 @@ static inline int ovl_do_unlink(struct inode *dir, struct dentry *dentry)
 static inline int ovl_do_link(struct dentry *old_dentry, struct inode *dir,
 			      struct dentry *new_dentry, bool debug)
 {
-	int err = vfs_link(old_dentry, dir, new_dentry, NULL);
+  int err;
+  struct path new_upath; // KB_TODO: need to handle old_dentry
+  ovl_path_upper(new_dentry, &new_upath);
+	err = vfs_link(old_dentry, dir, new_dentry, NULL, &new_upath);
 	if (debug) {
 		pr_debug("link(%pd2, %pd2) = %i\n",
 			 old_dentry, new_dentry, err);
@@ -48,7 +56,10 @@ static inline int ovl_do_link(struct dentry *old_dentry, struct inode *dir,
 static inline int ovl_do_create(struct inode *dir, struct dentry *dentry,
 			     umode_t mode, bool debug)
 {
-	int err = vfs_create(dir, dentry, mode, true);
+  int err;
+  struct path upath;
+  ovl_path_upper(dentry, &upath);
+	err = vfs_create(dir, dentry, mode, true, &upath);
 	if (debug)
 		pr_debug("create(%pd2, 0%o) = %i\n", dentry, mode, err);
 	return err;
@@ -57,7 +68,10 @@ static inline int ovl_do_create(struct inode *dir, struct dentry *dentry,
 static inline int ovl_do_mkdir(struct inode *dir, struct dentry *dentry,
 			       umode_t mode, bool debug)
 {
-	int err = vfs_mkdir(dir, dentry, mode);
+  int err;
+  struct path upath;
+  ovl_path_upper(dentry, &upath);
+	err = vfs_mkdir(dir, dentry, mode, &upath);
 	if (debug)
 		pr_debug("mkdir(%pd2, 0%o) = %i\n", dentry, mode, err);
 	return err;
@@ -66,7 +80,10 @@ static inline int ovl_do_mkdir(struct inode *dir, struct dentry *dentry,
 static inline int ovl_do_mknod(struct inode *dir, struct dentry *dentry,
 			       umode_t mode, dev_t dev, bool debug)
 {
-	int err = vfs_mknod(dir, dentry, mode, dev);
+  int err;
+  struct path upath;
+  ovl_path_upper(dentry, &upath);
+	err = vfs_mknod(dir, dentry, mode, dev, &upath);
 	if (debug) {
 		pr_debug("mknod(%pd2, 0%o, 0%o) = %i\n",
 			 dentry, mode, dev, err);
@@ -77,7 +94,10 @@ static inline int ovl_do_mknod(struct inode *dir, struct dentry *dentry,
 static inline int ovl_do_symlink(struct inode *dir, struct dentry *dentry,
 				 const char *oldname, bool debug)
 {
-	int err = vfs_symlink(dir, dentry, oldname);
+  int err;
+  struct path upath;
+  ovl_path_upper(dentry, &upath);
+	err = vfs_symlink(dir, dentry, oldname, &upath);
 	if (debug)
 		pr_debug("symlink(\"%s\", %pd2) = %i\n", oldname, dentry, err);
 	return err;
@@ -103,12 +123,14 @@ static inline int ovl_do_rename(struct inode *olddir, struct dentry *olddentry,
 				struct inode *newdir, struct dentry *newdentry,
 				unsigned int flags)
 {
-	int err;
+  int err;
+  struct path upath;
+  ovl_path_upper(olddentry, &upath); // KB_TODO: make sure newdentry is handled
 
 	pr_debug("rename2(%pd2, %pd2, 0x%x)\n",
 		 olddentry, newdentry, flags);
 
-	err = vfs_rename(olddir, olddentry, newdir, newdentry, NULL, flags);
+	err = vfs_rename(olddir, olddentry, newdir, newdentry, NULL, flags, &upath);
 
 	if (err) {
 		pr_debug("...rename2(%pd2, %pd2, ...) = %i\n",
@@ -127,7 +149,8 @@ static inline int ovl_do_whiteout(struct inode *dir, struct dentry *dentry)
 enum ovl_path_type ovl_path_type(struct dentry *dentry);
 u64 ovl_dentry_version_get(struct dentry *dentry);
 void ovl_dentry_version_inc(struct dentry *dentry);
-void ovl_path_upper(struct dentry *dentry, struct path *path);
+// KB_TODO: revisit
+// void ovl_path_upper(struct dentry *dentry, struct path *path);
 void ovl_path_lower(struct dentry *dentry, struct path *path);
 enum ovl_path_type ovl_path_real(struct dentry *dentry, struct path *path);
 struct dentry *ovl_dentry_upper(struct dentry *dentry);
