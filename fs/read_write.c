@@ -433,7 +433,7 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 		else
 			ret = new_sync_read(file, buf, count, pos);
 		if (ret > 0) {
-			fsnotify_access(file);
+			fsnotify_access(file, ret);
 			add_rchar(current, ret);
 		}
 		inc_syscr(current);
@@ -506,7 +506,7 @@ ssize_t __kernel_write(struct file *file, const char *buf, size_t count, loff_t 
 		ret = new_sync_write(file, p, count, pos);
 	set_fs(old_fs);
 	if (ret > 0) {
-		fsnotify_modify(file);
+		fsnotify_modify(file, ret);
 		add_wchar(current, ret);
 	}
 	inc_syscw(current);
@@ -537,7 +537,7 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 		else
 			ret = new_sync_write(file, buf, count, pos);
 		if (ret > 0) {
-			fsnotify_modify(file);
+			fsnotify_modify(file, ret);
 			add_wchar(current, ret);
 		}
 		inc_syscw(current);
@@ -849,9 +849,9 @@ out:
 		kfree(iov);
 	if ((ret + (type == READ)) > 0) {
 		if (type == READ)
-			fsnotify_access(file);
+			fsnotify_access(file, ret);
 		else
-			fsnotify_modify(file);
+			fsnotify_modify(file, ret);
 	}
 	return ret;
 }
@@ -1029,9 +1029,9 @@ out:
 		kfree(iov);
 	if ((ret + (type == READ)) > 0) {
 		if (type == READ)
-			fsnotify_access(file);
+			fsnotify_access(file, ret);
 		else
-			fsnotify_modify(file);
+			fsnotify_modify(file, ret);
 	}
 	return ret;
 }
@@ -1269,8 +1269,8 @@ static ssize_t do_sendfile(int out_fd, int in_fd, loff_t *ppos,
 	if (retval > 0) {
 		add_rchar(current, retval);
 		add_wchar(current, retval);
-		fsnotify_access(in.file);
-		fsnotify_modify(out.file);
+		fsnotify_access(in.file, retval);
+		fsnotify_modify(out.file, retval);
 		out.file->f_pos = out_pos;
 		if (ppos)
 			*ppos = pos;
