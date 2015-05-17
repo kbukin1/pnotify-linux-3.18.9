@@ -2892,7 +2892,7 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 		if (error)
 			goto out_dput;
 		error = vfs_create(dir->d_inode, dentry, mode,
-				   nd->flags & LOOKUP_EXCL, 0);
+				   nd->flags & LOOKUP_EXCL, 0); // KB_TODO: should the last arg be zero?
 		if (error)
 			goto out_dput;
 	}
