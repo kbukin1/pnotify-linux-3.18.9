@@ -2892,7 +2892,7 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 		if (error)
 			goto out_dput;
 		error = vfs_create(dir->d_inode, dentry, mode,
-				   nd->flags & LOOKUP_EXCL, &nd->path); // KB_TODO: should the last arg be zero?
+				   nd->flags & LOOKUP_EXCL, &nd->path); // KB_TODO (*): should the last arg be zero? 
 		if (error)
 			goto out_dput;
 	}
@@ -2909,7 +2909,7 @@ out_dput:
 /*
  * Handle the last step of open()
  */
-/* KB_TODO: need to hook up with notify? */
+/* KB_TODO (*): need to hook up with notify? */
 static int do_last(struct nameidata *nd, struct path *path,
 		   struct file *file, const struct open_flags *op,
 		   int *opened, struct filename *name)
