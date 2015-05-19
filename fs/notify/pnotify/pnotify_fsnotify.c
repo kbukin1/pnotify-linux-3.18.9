@@ -40,8 +40,7 @@
 #include "pnotify.h"
 
 /*
- * Check if 2 events contain the same information.  We do not compare private data
- * but at this moment that isn't a problem for any know fsnotify listeners.
+ * Check if 2 events contain the same information. 
  */
 static bool pnotify_event_compare(struct fsnotify_event *old_fsn,
 			  struct fsnotify_event *new_fsn)
