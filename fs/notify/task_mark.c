@@ -28,7 +28,7 @@
 #include <linux/spinlock.h>
 #include <linux/sched.h>
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 #include <linux/fsnotify_backend.h>
 #include "fsnotify.h"
@@ -71,6 +71,7 @@ void fsnotify_destroy_task_mark(struct fsnotify_mark *mark)
 {
 	struct task_struct *task = mark->t.task;
 
+  BUG_ON(!mutex_is_locked(&mark->group->mark_mutex));
 	assert_spin_locked(&mark->lock);
 	// assert_spin_locked(&mark->group->mark_lock);
 
@@ -110,15 +111,22 @@ void fsnotify_clear_marks_by_task(struct task_struct *task)
 	task_unlock(task);
 
 	list_for_each_entry_safe(mark, lmark, &free_list, t.free_t_list) {
+    struct fsnotify_group *group;
 		pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE,
 			      "%s: removing mark (sending EXIT event first) "
 			      "0x%p (mark->mask: 0x%x) for task pid: %u\n",
 			      __func__, mark, mark->mask, task->pid);
+
 		pnotify_create_process_exit_event(task, mark, mark->group);
 
-    // KB_TODO: need properly destroy
-		// fsnotify_destroy_mark(mark);
-		fsnotify_put_mark(mark);
+    spin_lock(&mark->lock);
+    fsnotify_get_group(mark->group);
+    group = mark->group; 
+    spin_unlock(&mark->lock);
+
+    fsnotify_destroy_mark(mark, group);
+    fsnotify_put_mark(mark);
+    fsnotify_put_group(group);
 	}
 #endif
 }
@@ -208,14 +216,15 @@ int fsnotify_add_task_mark(struct fsnotify_mark *mark,
 {
 	int ret = 0;
 #ifdef CONFIG_PNOTIFY_USER
-	struct fsnotify_mark *lmark;
-	struct hlist_node *node = NULL, *last = NULL;
+	struct fsnotify_mark *lmark, *last = NULL;
+  int cmp;
 
 	mark->flags |= FSNOTIFY_MARK_FLAG_TASK;
 
+  BUG_ON(!mutex_is_locked(&group->mark_mutex));
 	assert_spin_locked(&mark->lock);
 
-  // KB_TODO 
+  // KB_TODO (*)
 	// assert_spin_locked(&group->mark_lock);
 
 	task_lock(task);
@@ -230,28 +239,26 @@ int fsnotify_add_task_mark(struct fsnotify_mark *mark,
 
 	/* should mark be in the middle of the current list? */
 	hlist_for_each_entry(lmark, &task->pnotify_marks, t.t_list) {
-		last = node;
+		last = lmark;
 
 		if ((lmark->group == group) && !allow_dups) {
 			ret = -EEXIST;
 			goto out;
 		}
 
-		if (mark->group->priority < lmark->group->priority)
-			continue;
-
-		if ((mark->group->priority == lmark->group->priority) &&
-		    (mark->group < lmark->group))
-			continue;
+    cmp = fsnotify_compare_groups(lmark->group, mark->group);
+    if (cmp < 0)
+      continue;
 
 		hlist_add_before_rcu(&mark->t.t_list, &lmark->t.t_list);
 		goto out;
 	}
 
 	BUG_ON(last == NULL);
-	/* mark should be the last entry.  last is the current last entry */
-  // KB_TODO: need to figure out the next call
+  // KB_TODO (*): need to figure out the next call
 	// hlist_add_after_rcu(last, &mark->t.t_list);
+	/* mark should be the last entry.  last is the current last entry */
+  hlist_add_behind_rcu(&mark->t.t_list, &last->t.t_list);
 out:
 	fsnotify_recalc_task_mask_locked(task);
 	task_unlock(task);
