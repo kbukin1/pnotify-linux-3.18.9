@@ -2866,7 +2866,7 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 		if (error)
 			goto out_dput;
 		error = vfs_create(dir->d_inode, dentry, mode,
-				   nd->flags & LOOKUP_EXCL, 0);
+				   nd->flags & LOOKUP_EXCL, &nd->path); // KB_TODO (*): should the last arg be zero? 
 		if (error)
 			goto out_dput;
 	}
@@ -2883,7 +2883,7 @@ out_dput:
 /*
  * Handle the last step of open()
  */
-/* KB_TODO: need to hook up with notify? */
+/* KB_TODO (*): need to hook up with notify? */
 static int do_last(struct nameidata *nd, struct path *path,
 		   struct file *file, const struct open_flags *op,
 		   int *opened, struct filename *name)
@@ -4063,6 +4063,7 @@ SYSCALL_DEFINE2(link, const char __user *, oldname, const char __user *, newname
  *	   ->i_mutex on parents, which works but leads to some truly excessive
  *	   locking].
  */
+// KB_TODO: args need to be fixed
 int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	       struct inode *new_dir, struct dentry *new_dentry,
 	       struct inode **delegated_inode, unsigned int flags, 

@@ -56,6 +56,7 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
+#include <linux/pnotify.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -1513,6 +1514,13 @@ static int do_execve_common(struct filename *filename,
 	retval = exec_binprm(bprm);
 	if (retval < 0)
 		goto out;
+
+  // KB_TODO: a better way to handle #ifndef?
+  // KB_TODO: also: what if this is not tracked task? could that be handled quicker?
+  //          maybe pnotify_broadcast_event() should check if the task is tracked first thing?
+#ifdef CONFIG_PNOTIFY_USER
+  pnotify_broadcast_event(current, PN_EXEC_CMD, filename->name); /* this one? */
+#endif
 
 	/* execve succeeded */
 	current->fs->in_exec = 0;

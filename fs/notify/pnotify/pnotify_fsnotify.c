@@ -40,8 +40,7 @@
 #include "pnotify.h"
 
 /*
- * Check if 2 events contain the same information.  We do not compare private data
- * but at this moment that isn't a problem for any know fsnotify listeners.
+ * Check if 2 events contain the same information. 
  */
 static bool pnotify_event_compare(struct fsnotify_event *old_fsn,
 			  struct fsnotify_event *new_fsn)
@@ -98,16 +97,20 @@ static int pnotify_fullpath_from_path(struct pnotify_event_info *event,
           event->inode_num,
 		      (char*)(name ? name : (const unsigned char*)"NULL"));
 
-  if (path_arg && current->fs /* KB_TODO: need to understand this current->fs hack */ ) {
+  if (path_arg && current->fs /* KB_TODO: need to understand why current->fs is sometimes zero */ ) {
+    path_get(path_arg);
     page = (char *) __get_free_page(GFP_KERNEL);
-    if (!page)
+    if (!page) {
+      path_put(path_arg);
       return -ENOMEM;
+    }
 
     path_name = d_path(path_arg, page, buflen);
+    path_put(path_arg);
 
     if (IS_ERR(path_name)) {
       pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
-          "%s: dpath failed(1): %d (jiffies: 0x%llx, "
+          "%s: dpath failed: %d (jiffies: 0x%llx, "
           "pid: %u, event_inode_num: %lu)\n",
           __func__, (int)(long)path_name,
           event->jiffies, event->pid,
@@ -183,8 +186,9 @@ int pnotify_handle_event(struct fsnotify_group *group,
 	pr_debug("%s: group=%p inode=%p mask=%x\n", __func__, 
       group, inode, mask);
 	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, 
-      "%s: group=%p data_type=%d inode=%p mask=%x path_for_inode_events=%p data=%p\n", __func__, 
-      group, data_type, inode, mask, path_for_inode_events, data);
+      "%s: group=%p data_type=%d inode=%p mask=%x path_for_inode_events=%p data=%p file_name=%s\n", 
+      __func__, group, data_type, inode, mask, path_for_inode_events, data,
+      (file_name ? file_name : (unsigned char*) "NULL")); // why file_name is unsigned?
 
 	i_mark = container_of(inode_mark, struct pnotify_inode_mark,
 			      fsn_mark);
@@ -205,6 +209,7 @@ int pnotify_handle_event(struct fsnotify_group *group,
 	event->status = status;
 	event->jiffies = get_jiffies_64();
 
+  // KB_TODO: this whole switch/case may need to be re-worked/simplified
   switch (data_type) {
     case FSNOTIFY_EVENT_PATH: {
         struct path *path = data;
@@ -243,16 +248,19 @@ int pnotify_handle_event(struct fsnotify_group *group,
       break;
     case FSNOTIFY_EVENT_NONE:
       event->inode_num = 0;
-      event->name = NULL;
-      event->name_len = 0;
+      if (len) {
+        // KB_TODO: need to revisit
+        event->name = kstrdup(file_name, GFP_KERNEL);
+        // strcpy(event->name, file_name);
+      }
       break;
     default:
       BUG();
   }
 
-  // KB_TODO : review
-	// if (len)
-		// strcpy(event->name, file_name);
+  // KB_TODO (*) : review
+  //if (len)
+    //strcpy(event->name, file_name);
 
 	ret = fsnotify_add_event(group, fsn_event, pnotify_merge);
 	if (ret) {

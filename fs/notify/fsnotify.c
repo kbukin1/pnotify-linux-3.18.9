@@ -251,7 +251,7 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 	 */
 	if (!(mask & FS_MODIFY) &&
 	    !(test_mask & to_tell->i_fsnotify_mask) &&
-	    !(mnt && test_mask & mnt->mnt_fsnotify_mask) && !is_pnotify_event )
+	    !(mnt && test_mask & mnt->mnt_fsnotify_mask) && !is_pnotify_event)
 		return 0;
 
 	idx = srcu_read_lock(&fsnotify_mark_srcu);
@@ -269,6 +269,7 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 					      &fsnotify_mark_srcu);
 	}
 
+  // KB_TODO: see if there is a way to get rid of this #ifndef
 #ifdef CONFIG_PNOTIFY_USER
   if (is_pnotify_event) {
     task_node = srcu_dereference(current->pnotify_marks.first,
