@@ -222,7 +222,7 @@ int pnotify_handle_event(struct fsnotify_group *group,
           if (ret < 0) {
             pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
                 "%s: mask 0x%0x data_type=%d, "
-                "FULL_PATH_FROM_PATH(1) FAILED, "
+                "FULL_PATH_FROM_PATH FAILED, "
                 "pid %u: %d\n", __func__, mask,
                 data_type, pid, ret);
           }
@@ -238,7 +238,7 @@ int pnotify_handle_event(struct fsnotify_group *group,
           if (ret < 0) {
             pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
                 "%s: mask 0x%0x data_type=%d, "
-                "FULL_PATH_FROM_PATH(1) FAILED, "
+                "FULL_PATH_FROM_PATH FAILED, "
                 "pid %u: %d\n", __func__, mask,
                 data_type, pid, ret);
           }
