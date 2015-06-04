@@ -16,6 +16,7 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/atomic.h>
+#include <linux/sched.h>
 
 /*
  * IN_* from inotfy.h lines up EXACTLY with FS_*, this is so we can easily
@@ -284,9 +285,20 @@ extern int pnotify_debug_print_level __read_mostly;
 #define pnotify_debug(level,fmt, ...) \
   if(pnotify_debug_print_level >= level) \
 printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
-#else
+
+static inline int has_pnotify_tracking(struct task_struct * task)
+{
+	return !hlist_empty(&task->pnotify_marks);
+}
+
+#else /* CONFIG_PNOTIFY_USER */
+
 #define pnotify_debug(level,fmt, ...)
-#endif
+static inline int has_pnotify_tracking(struct task_struct * task)
+{
+  return 0;
+}
+#endif /* CONFIG_PNOTIFY_USER */
 
 /* called from the vfs helpers */
 
