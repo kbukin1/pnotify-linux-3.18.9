@@ -1418,7 +1418,7 @@ extern int vfs_symlink(struct inode *, struct dentry *, const char *, struct pat
 extern int vfs_link(struct dentry *, struct inode *, struct dentry *, struct inode **, struct path *);
 extern int vfs_rmdir(struct inode *, struct dentry *);
 extern int vfs_unlink(struct inode *, struct dentry *, struct inode **, struct path *);
-extern int vfs_rename(struct inode *, struct dentry *, struct inode *, struct dentry *, struct inode **, unsigned int, struct path *);
+extern int vfs_rename(struct inode *, struct dentry *, struct inode *, struct dentry *, struct inode **, unsigned int, struct path *); // KB_TODO: check all the arguments... gcc gives a warning: expected 'unsigned int' but argument is of type 'struct path *'
 extern int vfs_whiteout(struct inode *, struct dentry *);
 
 /*
