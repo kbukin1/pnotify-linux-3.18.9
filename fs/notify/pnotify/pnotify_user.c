@@ -752,7 +752,7 @@ static int pnotify_update_existing_watch(struct fsnotify_group *group,
 		return -EINVAL;
 
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
@@ -869,7 +869,8 @@ int pnotify_perm_check(u32 pid)
 		return -ENOENT;
 
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid); // KB_TODO: seems approriate for now... may want to consider to use the next call instead
+	// task = find_task_by_pid_ns(pid, current->nsproxy->pid_ns_for_children);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
@@ -926,7 +927,7 @@ int pnotify_new_watch(struct fsnotify_group *group, u32 pid, u32 arg)
 
   // -------------------------------- XXXXXXXXXXX
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
@@ -1148,7 +1149,7 @@ SYSCALL_DEFINE3(pnotify_annotate, u32, pid, const char __user *, buf, u32, len)
 		return -EINVAL;
 
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
