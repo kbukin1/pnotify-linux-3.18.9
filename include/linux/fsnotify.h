@@ -171,7 +171,8 @@ static inline u32 fsnotify_symlink(const char __user *filename)
   if (!filename || !has_pnotify_tracking(current))
     return fs_cookie;
 
-  error = vfs_lstat(filename, &stat);
+	error = vfs_fstatat(AT_FDCWD, filename, &stat, AT_SYMLINK_NOFOLLOW | AT_STAT_NONOTIFY );
+
   if (!error && S_ISLNK(stat.mode)) {
 
     if (S_ISDIR(stat.mode))
