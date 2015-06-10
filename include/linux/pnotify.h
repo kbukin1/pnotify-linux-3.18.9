@@ -22,8 +22,16 @@ struct pnotify_event {
 #define PN_PROCESS_EXIT 	0x00400000  /* pnotify system: an observed process exited */
 #define PN_EXEC_CMD       0x00800000  /* pnotify system: an observed process called exec() */
 #define PN_STAT           0x10000000  /* pnotify system: an observed process called ?stat() */
+#define PN_SYMLINK        0x00001000  /* pnotify system: an observed process accessed symlink (opened(), create()) */
 
-#define PN_ALL_EVENTS (IN_ALL_EVENTS | PN_ANNOTATE | PN_PROCESS_CREATE | PN_PROCESS_EXIT | PN_EXEC_CMD | PN_STAT)
+#define PN_ALL_EVENTS (IN_ALL_EVENTS | \
+                       PN_ANNOTATE | \
+                       PN_PROCESS_CREATE | \
+                       PN_PROCESS_EXIT | \
+                       PN_EXEC_CMD | \
+                       PN_STAT | \
+                       PN_SYMLINK \
+                      )
 
 #ifdef __KERNEL__
 extern struct ctl_table pnotify_table[]; /* for sysctl */
