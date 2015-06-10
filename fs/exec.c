@@ -1538,9 +1538,9 @@ static int do_execve_common(struct filename *filename,
 	if (retval < 0)
 		goto out;
 
-  // KB_TODO: a better way to handle #ifndef?
-  // KB_TODO: also: what if this is not tracked task? could that be handled quicker?
-  //          maybe pnotify_broadcast_event() should check if the task is tracked first thing?
+  // KB_TODO(*): a better way to handle #ifndef?
+  // KB_TODO(*): also: what if this is not tracked task? could that be handled quicker?
+  //             maybe pnotify_broadcast_event() should check if the task is tracked first thing?
 #ifdef CONFIG_PNOTIFY_USER
   pnotify_broadcast_event(current, PN_EXEC_CMD, filename->name); /* this one? */
 #endif
