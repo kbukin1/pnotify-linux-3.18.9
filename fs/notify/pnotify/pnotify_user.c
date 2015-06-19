@@ -697,7 +697,10 @@ int pnotify_broadcast_event(struct task_struct *task, u32 event_type, const char
 	int ret = -ENOENT;
 	int lastret = 0;
 
-  // KB_TODO: can we return right away is task is not tracked?
+  // KB_TODO(*): can we return right away is task is not tracked?
+  if (!has_pnotify_tracking(task))
+    return ret;
+
 	LIST_HEAD(bcast_list);
 
 	mutex_lock(&pnotify_annotate_mutex);
@@ -752,7 +755,7 @@ static int pnotify_update_existing_watch(struct fsnotify_group *group,
 		return -EINVAL;
 
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
@@ -869,7 +872,8 @@ int pnotify_perm_check(u32 pid)
 		return -ENOENT;
 
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid); // KB_TODO: seems approriate for now... may want to consider to use the next call instead
+	// task = find_task_by_pid_ns(pid, current->nsproxy->pid_ns_for_children);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
@@ -926,7 +930,7 @@ int pnotify_new_watch(struct fsnotify_group *group, u32 pid, u32 arg)
 
   // -------------------------------- XXXXXXXXXXX
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
@@ -1148,7 +1152,7 @@ SYSCALL_DEFINE3(pnotify_annotate, u32, pid, const char __user *, buf, u32, len)
 		return -EINVAL;
 
 	rcu_read_lock();
-	task = find_task_by_pid_ns(pid, &init_pid_ns);
+	task = find_task_by_vpid(pid);
 	if (task)
 		get_task_struct(task);
 	rcu_read_unlock();
@@ -1213,7 +1217,7 @@ static int __init pnotify_user_setup(void)
 
 	pnotify_debug_print_level = 0;
 	pnotify_major_version = 1;
-	pnotify_minor_version = 11;
+	pnotify_minor_version = 15;
 
 	return 0;
 }

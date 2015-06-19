@@ -136,7 +136,7 @@ SYSCALL_DEFINE1(uselib, const char __user *, library)
 	if (file->f_path.mnt->mnt_flags & MNT_NOEXEC)
 		goto exit;
 
-	fsnotify_open(file);
+	fsnotify_open(file, library);
 
 	error = -ENOEXEC;
 
@@ -770,7 +770,7 @@ static struct file *do_open_exec(struct filename *name)
 	if (file->f_path.mnt->mnt_flags & MNT_NOEXEC)
 		goto exit;
 
-	fsnotify_open(file);
+	fsnotify_open(file, name->uptr);
 
 	err = deny_write_access(file);
 	if (err)
@@ -1515,9 +1515,9 @@ static int do_execve_common(struct filename *filename,
 	if (retval < 0)
 		goto out;
 
-  // KB_TODO: a better way to handle #ifndef?
-  // KB_TODO: also: what if this is not tracked task? could that be handled quicker?
-  //          maybe pnotify_broadcast_event() should check if the task is tracked first thing?
+  // KB_TODO(*): a better way to handle #ifndef?
+  // KB_TODO(*): also: what if this is not tracked task? could that be handled quicker?
+  //             maybe pnotify_broadcast_event() should check if the task is tracked first thing?
 #ifdef CONFIG_PNOTIFY_USER
   pnotify_broadcast_event(current, PN_EXEC_CMD, filename->name); /* this one? */
 #endif
