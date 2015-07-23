@@ -1150,8 +1150,6 @@ SYSCALL_DEFINE3(pnotify_annotate, u32, pid, const char __user *, buf, u32, len)
 	char *kernel_buf = NULL;
 	struct task_struct *task = NULL;
 
-	return -ENOENT;
-
 	ret = pnotify_perm_check(pid);
 	if (ret)
 		return ret;
@@ -1225,7 +1223,7 @@ static int __init pnotify_user_setup(void)
 
 	pnotify_debug_print_level = 0;
 	pnotify_major_version = 1;
-	pnotify_minor_version = 16;
+	pnotify_minor_version = 17;
 
 	return 0;
 }
