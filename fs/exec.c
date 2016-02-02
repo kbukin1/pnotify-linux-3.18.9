@@ -136,7 +136,7 @@ SYSCALL_DEFINE1(uselib, const char __user *, library)
 	if (file->f_path.mnt->mnt_flags & MNT_NOEXEC)
 		goto exit;
 
-	fsnotify_open(file, library);
+	fsnotify_open(file/*, library */);
 
 	error = -ENOEXEC;
 
@@ -773,7 +773,7 @@ static struct file *do_open_exec(struct filename *name)
 	if (file->f_path.mnt->mnt_flags & MNT_NOEXEC)
 		goto exit;
 
-	fsnotify_open(file, name->uptr);
+	fsnotify_open(file/*, name->uptr */);
 
 	err = deny_write_access(file);
 	if (err)

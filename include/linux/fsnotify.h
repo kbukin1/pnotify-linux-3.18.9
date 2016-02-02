@@ -160,6 +160,7 @@ static inline void fsnotify_inoderemove(struct inode *inode, struct path *path)
 /*
  * an event is sent if filename is a symlink
  */
+#if 0
 static inline u32 fsnotify_symlink(const char __user *filename) 
 {
   struct kstat stat;
@@ -189,6 +190,7 @@ static inline u32 fsnotify_symlink(const char __user *filename)
 
   return fs_cookie;
 }
+#endif
 
 /*
  * fsnotify_create - 'name' was linked in
@@ -270,18 +272,18 @@ static inline void fsnotify_modify(struct file *file, ssize_t count)
 /*
  * fsnotify_open - file was opened
  */
-static inline void fsnotify_open(struct file *file, const char __user *filename)
+static inline void fsnotify_open(struct file *file /*, const char __user *filename */ )
 {
 	struct path *path = &file->f_path;
 	struct inode *inode = file_inode(file);
 	__u32 mask = FS_OPEN;
-  u32 fs_cookie = fsnotify_symlink(filename);
+  /* u32 fs_cookie = fsnotify_symlink(filename); */
 
 	if (S_ISDIR(inode->i_mode))
 		mask |= FS_ISDIR;
 
 	fsnotify_parent(path, NULL, mask, NULL);
-	fsnotify(inode, mask, path, FSNOTIFY_EVENT_PATH, NULL, fs_cookie, NULL, 0);
+	fsnotify(inode, mask, path, FSNOTIFY_EVENT_PATH, NULL, /* fs_cookie */ 0, NULL, 0);
 }
 
 /*
