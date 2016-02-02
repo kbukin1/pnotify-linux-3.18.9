@@ -69,86 +69,58 @@ static int pnotify_merge(struct list_head *list,
 }
 
 
-/* Taken directly from dcache.c: */
-static int prepend(char **buffer, int *buflen, const char *str, int namelen)
-{
-  *buflen -= namelen;
-  if (*buflen < 0)
-    return -ENAMETOOLONG;
-  *buffer -= namelen;
-  memcpy(*buffer, str, namelen);
-  return 0;
-}
-
-static int pnotify_fullpath_from_path(struct pnotify_event_info *event,
+/**
+ * @path_arg: path to report
+ * @buff: buffer to return value in
+ * @buff_size: buffer length
+ * @name: file name
+ *
+ * Returns a pointer into the buffer or an error code if the path was
+ * too long. Note: Callers should use the returned pointer, not the passed
+ * in buffer, to use the name! The implementation often starts at an offset
+ * into the buffer, and may leave 0 bytes at the start.
+ *
+ * "buff_size" should be positive.
+ */
+static char* pnotify_fullpath_from_path(char* buff,
+                                        int buff_size,
                          				      struct path *path_arg,
                                       const unsigned char *name)
 {
-	char *page = NULL, *second_page = NULL;
-	char *path_name = NULL;
-	char *pos = NULL;
-	int buflen = PAGE_SIZE;
-	int err  = 0;
+  int length;
+	char* ret = buff + buff_size - 1;
+
+  if (!buff || buff_size <= 0)
+    return ERR_PTR(-EINVAL);
 
 	pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
-		      "%s: event jiffies: 0x%0llx, path: 0x%p (denty: %p),"
-		      "(event->inode_num: %lu), name: %s\n",
-		      __func__, event->jiffies, path_arg, path_arg ? path_arg->dentry : NULL,
-          event->inode_num,
+		      "%s: path: 0x%p (denty: %p), name: %s\n",
+		      __func__, path_arg, path_arg ? path_arg->dentry : NULL,
 		      (char*)(name ? name : (const unsigned char*)"NULL"));
+
+  *ret = '\0';
+
+  if (name) {
+    length = strlen(name);
+    if (unlikely(length >= buff_size))
+      return ERR_PTR(-ENOMEM);
+
+    memcpy(buff + buff_size - length - 1, name, length);
+    ret -= length;
+  }
 
   if (path_arg && current->fs /* KB_TODO: need to understand why current->fs is sometimes zero */ ) {
     path_get(path_arg);
-    page = (char *) __get_free_page(GFP_KERNEL);
-    if (!page) {
-      path_put(path_arg);
-      return -ENOMEM;
-    }
-
-    path_name = d_path(path_arg, page, buflen);
+		ret = d_path(path_arg, buff, ret - buff);
     path_put(path_arg);
 
-    if (IS_ERR(path_name)) {
+		if (IS_ERR(ret)) {
       pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
-          "%s: dpath failed: %d (jiffies: 0x%llx, "
-          "pid: %u, event_inode_num: %lu)\n",
-          __func__, (int)(long)path_name,
-          event->jiffies, event->pid,
-          event->inode_num);
-      path_name = NULL;
-    }
-  }
-
-	if (name) {
-		second_page = (char *) __get_free_page(GFP_KERNEL);
-		if (!second_page) {
-			err = -ENOMEM;
-			goto out;
-		}
-		pos = second_page + PAGE_SIZE;
-		prepend(&pos, &buflen, "\0", 1);
-		prepend(&pos, &buflen, name, strlen(name));
-		if (path_name) {
-			prepend(&pos, &buflen, "/", 1);
-			prepend(&pos, &buflen, path_name, strlen(path_name));
+          "%s: dpath failed: %p\n", __func__, ret);
 		}
 	}
-	else if (path_name)
-		pos = path_name;
 
-	if ( pos && strlen(pos)) {
-    event->name_len = 0;
-    pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
-        "%s: name found: %s\n", __func__, event->name);
-	}
-
-out:
-	if (page)
-		free_page((unsigned long) page);
-	if (second_page)
-		free_page((unsigned long) second_page);
-
-	return err;
+  return ret;
 }
 
 int pnotify_handle_event(struct fsnotify_group *group,
@@ -163,8 +135,10 @@ int pnotify_handle_event(struct fsnotify_group *group,
 	struct pnotify_inode_mark *i_mark;
 	struct pnotify_event_info *event;
 	struct fsnotify_event *fsn_event;
-	int ret = 0;
+	int ret;
+  char *buffer = 0;
 	int len = 0;
+  char* page = 0;
 	int alloc_len = sizeof(struct pnotify_event_info);
 
 	BUG_ON(vfsmount_mark);
@@ -177,17 +151,73 @@ int pnotify_handle_event(struct fsnotify_group *group,
 			return 0;
 	}
 
-	if (file_name) {
-		len = strlen(file_name);
-		alloc_len += len + 1;
-	}
-
 	pr_debug("%s: group=%p inode=%p mask=%x\n", __func__, 
       group, inode, mask);
 	pnotify_debug(PNOTIFY_DEBUG_LEVEL_VERBOSE, 
       "%s: group=%p data_type=%d inode=%p mask=%x path_for_inode_events=%p data=%p file_name=%s\n", 
       __func__, group, data_type, inode, mask, path_for_inode_events, data,
       (file_name ? file_name : (unsigned char*) "NULL")); // why file_name is unsigned?
+
+
+  switch (data_type) {
+    case FSNOTIFY_EVENT_PATH: {
+        struct path *path = data;
+
+        if (pid) {
+          page = (char *) __get_free_page(GFP_KERNEL);
+          if (unlikely(!page))
+            return -ENOMEM;
+
+          buffer = pnotify_fullpath_from_path(page, PAGE_SIZE, path, file_name);
+
+          if (IS_ERR(buffer)) {
+            pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
+                "%s: mask 0x%0x data_type=%d, "
+                "FULL_PATH_FROM_PATH(1) FAILED, "
+                "pid %u: %p\n", __func__, mask,
+                data_type, pid, buffer);
+          }
+          else {
+            len = buffer - page;
+          }
+        }
+       }
+       break;
+    case FSNOTIFY_EVENT_INODE: {
+      struct inode *inode = data;
+      if (pid) {
+        if (inode) {
+
+          page = (char *) __get_free_page(GFP_KERNEL);
+          if (unlikely(!page))
+            return -ENOMEM;
+
+          buffer = pnotify_fullpath_from_path(page, PAGE_SIZE, path_for_inode_events, file_name);
+
+          if (IS_ERR(buffer)) {
+            pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
+                "%s: mask 0x%0x data_type=%d, "
+                "FULL_PATH_FROM_PATH(1) FAILED, "
+                "pid %u: %p\n", __func__, mask,
+                data_type, pid, buffer);
+          }
+          else {
+            len = buffer - page;
+          }
+          
+        }
+       }
+      }
+      break;
+    case FSNOTIFY_EVENT_NONE:
+      buffer = (char*) file_name;
+      len = file_name ? strlen(file_name) : 0;
+      break;
+    default:
+      BUG();
+  }
+
+  alloc_len += len + 1;
 
 	i_mark = container_of(inode_mark, struct pnotify_inode_mark,
 			      fsn_mark);
@@ -208,23 +238,17 @@ int pnotify_handle_event(struct fsnotify_group *group,
 	event->status = status;
 	event->jiffies = get_jiffies_64();
 
-  // KB_TODO: this whole switch/case may need to be re-worked/simplified
+  event->name_len = len;
+  if (len)
+    memcpy(event->name, buffer, len);
+  *(event->name + len) = '\0';
+
+
   switch (data_type) {
     case FSNOTIFY_EVENT_PATH: {
         struct path *path = data;
         if (path && path->dentry && path->dentry->d_inode) {
           event->inode_num = path->dentry->d_inode->i_ino;
-        }
-
-        if (pid) {
-          ret = pnotify_fullpath_from_path(event, path, file_name);
-          if (ret < 0) {
-            pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
-                "%s: mask 0x%0x data_type=%d, "
-                "FULL_PATH_FROM_PATH FAILED, "
-                "pid %u: %d\n", __func__, mask,
-                data_type, pid, ret);
-          }
         }
        }
        break;
@@ -233,32 +257,17 @@ int pnotify_handle_event(struct fsnotify_group *group,
       if (pid) {
         if (inode) {
           event->inode_num = inode->i_ino;
-          ret = pnotify_fullpath_from_path(event, path_for_inode_events, file_name);
-          if (ret < 0) {
-            pnotify_debug(PNOTIFY_DEBUG_LEVEL_DEBUG_EVENTS,
-                "%s: mask 0x%0x data_type=%d, "
-                "FULL_PATH_FROM_PATH FAILED, "
-                "pid %u: %d\n", __func__, mask,
-                data_type, pid, ret);
-          }
+
         }
        }
       }
       break;
     case FSNOTIFY_EVENT_NONE:
       event->inode_num = 0;
-      event->name_len = len;
-      if (len) {
-        strcpy(event->name, file_name);
-      }
       break;
     default:
       BUG();
   }
-
-  // KB_TODO (*) : review
-  //if (len)
-    //strcpy(event->name, file_name);
 
 	ret = fsnotify_add_event(group, fsn_event, pnotify_merge);
 	if (ret) {
@@ -268,6 +277,9 @@ int pnotify_handle_event(struct fsnotify_group *group,
 
 	if (inode_mark->mask & IN_ONESHOT)
 		fsnotify_destroy_mark(inode_mark, group);
+
+  if (page)
+    free_page((unsigned long) page);
 
 	return 0;
 }
@@ -325,7 +337,7 @@ static void pnotify_free_group_priv(struct fsnotify_group *group)
 	}
 }
 
-static void pnotify_free_event(struct fsnotify_event *fsn_event)
+void pnotify_free_event(struct fsnotify_event *fsn_event)
 {
 	kfree(PNOTIFY_E(fsn_event));
 }
