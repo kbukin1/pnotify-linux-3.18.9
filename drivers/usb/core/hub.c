@@ -124,6 +124,10 @@ struct usb_hub *usb_hub_to_struct_hub(struct usb_device *hdev)
 
 static int usb_device_supports_lpm(struct usb_device *udev)
 {
+	/* Some devices have trouble with LPM */
+	if (udev->quirks & USB_QUIRK_NO_LPM)
+		return 0;
+
 	/* USB 2.1 (and greater) devices indicate LPM support through
 	 * their USB 2.0 Extended Capabilities BOS descriptor.
 	 */
@@ -2613,9 +2617,6 @@ static bool use_new_scheme(struct usb_device *udev, int retry)
 	return USE_NEW_SCHEME(retry);
 }
 
-static int hub_port_reset(struct usb_hub *hub, int port1,
-			struct usb_device *udev, unsigned int delay, bool warm);
-
 /* Is a USB 3.0 port in the Inactive or Compliance Mode state?
  * Port worm reset is required to recover
  */
@@ -2703,44 +2704,6 @@ static int hub_port_wait_reset(struct usb_hub *hub, int port1,
 	return 0;
 }
 
-static void hub_port_finish_reset(struct usb_hub *hub, int port1,
-			struct usb_device *udev, int *status)
-{
-	switch (*status) {
-	case 0:
-		/* TRSTRCY = 10 ms; plus some extra */
-		msleep(10 + 40);
-		if (udev) {
-			struct usb_hcd *hcd = bus_to_hcd(udev->bus);
-
-			update_devnum(udev, 0);
-			/* The xHC may think the device is already reset,
-			 * so ignore the status.
-			 */
-			if (hcd->driver->reset_device)
-				hcd->driver->reset_device(hcd, udev);
-		}
-		/* FALL THROUGH */
-	case -ENOTCONN:
-	case -ENODEV:
-		usb_clear_port_feature(hub->hdev,
-				port1, USB_PORT_FEAT_C_RESET);
-		if (hub_is_superspeed(hub->hdev)) {
-			usb_clear_port_feature(hub->hdev, port1,
-					USB_PORT_FEAT_C_BH_PORT_RESET);
-			usb_clear_port_feature(hub->hdev, port1,
-					USB_PORT_FEAT_C_PORT_LINK_STATE);
-			usb_clear_port_feature(hub->hdev, port1,
-					USB_PORT_FEAT_C_CONNECTION);
-		}
-		if (udev)
-			usb_set_device_state(udev, *status
-					? USB_STATE_NOTATTACHED
-					: USB_STATE_DEFAULT);
-		break;
-	}
-}
-
 /* Handle port reset and port warm(BH) reset (for USB3 protocol ports) */
 static int hub_port_reset(struct usb_hub *hub, int port1,
 			struct usb_device *udev, unsigned int delay, bool warm)
@@ -2764,13 +2727,10 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 		 * If the caller hasn't explicitly requested a warm reset,
 		 * double check and see if one is needed.
 		 */
-		status = hub_port_status(hub, port1,
-					&portstatus, &portchange);
-		if (status < 0)
-			goto done;
-
-		if (hub_port_warm_reset_required(hub, port1, portstatus))
-			warm = true;
+		if (hub_port_status(hub, port1, &portstatus, &portchange) == 0)
+			if (hub_port_warm_reset_required(hub, port1,
+							portstatus))
+				warm = true;
 	}
 	clear_bit(port1, hub->warm_reset_bits);
 
@@ -2796,10 +2756,18 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 
 		/* Check for disconnect or reset */
 		if (status == 0 || status == -ENOTCONN || status == -ENODEV) {
-			hub_port_finish_reset(hub, port1, udev, &status);
+			usb_clear_port_feature(hub->hdev, port1,
+					USB_PORT_FEAT_C_RESET);
 
 			if (!hub_is_superspeed(hub->hdev))
 				goto done;
+
+			usb_clear_port_feature(hub->hdev, port1,
+					USB_PORT_FEAT_C_BH_PORT_RESET);
+			usb_clear_port_feature(hub->hdev, port1,
+					USB_PORT_FEAT_C_PORT_LINK_STATE);
+			usb_clear_port_feature(hub->hdev, port1,
+					USB_PORT_FEAT_C_CONNECTION);
 
 			/*
 			 * If a USB 3.0 device migrates from reset to an error
@@ -2833,6 +2801,26 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 	dev_err(&port_dev->dev, "Cannot enable. Maybe the USB cable is bad?\n");
 
 done:
+	if (status == 0) {
+		/* TRSTRCY = 10 ms; plus some extra */
+		msleep(10 + 40);
+		if (udev) {
+			struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+
+			update_devnum(udev, 0);
+			/* The xHC may think the device is already reset,
+			 * so ignore the status.
+			 */
+			if (hcd->driver->reset_device)
+				hcd->driver->reset_device(hcd, udev);
+
+			usb_set_device_state(udev, USB_STATE_DEFAULT);
+		}
+	} else {
+		if (udev)
+			usb_set_device_state(udev, USB_STATE_NOTATTACHED);
+	}
+
 	if (!hub_is_superspeed(hub->hdev))
 		up_read(&ehci_cf_port_reset_rwsem);
 
@@ -3394,10 +3382,10 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 	if (status) {
 		dev_dbg(&port_dev->dev, "can't resume, status %d\n", status);
 	} else {
-		/* drive resume for at least 20 msec */
+		/* drive resume for USB_RESUME_TIMEOUT msec */
 		dev_dbg(&udev->dev, "usb %sresume\n",
 				(PMSG_IS_AUTO(msg) ? "auto-" : ""));
-		msleep(25);
+		msleep(USB_RESUME_TIMEOUT);
 
 		/* Virtual root hubs can trigger on GET_PORT_STATUS to
 		 * stop resume signaling.  Then finish the resume
@@ -4514,6 +4502,8 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 		goto fail;
 	}
 
+	usb_detect_quirks(udev);
+
 	if (udev->wusb == 0 && le16_to_cpu(udev->descriptor.bcdUSB) >= 0x0201) {
 		retval = usb_get_bos_descriptor(udev);
 		if (!retval) {
@@ -4708,7 +4698,6 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 		if (status < 0)
 			goto loop;
 
-		usb_detect_quirks(udev);
 		if (udev->quirks & USB_QUIRK_DELAY_INIT)
 			msleep(1000);
 
@@ -5340,9 +5329,6 @@ static int usb_reset_and_verify_device(struct usb_device *udev)
 	if (udev->usb2_hw_lpm_enabled == 1)
 		usb_set_usb2_hardware_lpm(udev, 0);
 
-	bos = udev->bos;
-	udev->bos = NULL;
-
 	/* Disable LPM and LTM while we reset the device and reinstall the alt
 	 * settings.  Device-initiated LPM settings, and system exit latency
 	 * settings are cleared when the device is reset, so we have to set
@@ -5351,14 +5337,17 @@ static int usb_reset_and_verify_device(struct usb_device *udev)
 	ret = usb_unlocked_disable_lpm(udev);
 	if (ret) {
 		dev_err(&udev->dev, "%s Failed to disable LPM\n.", __func__);
-		goto re_enumerate;
+		goto re_enumerate_no_bos;
 	}
 	ret = usb_disable_ltm(udev);
 	if (ret) {
 		dev_err(&udev->dev, "%s Failed to disable LTM\n.",
 				__func__);
-		goto re_enumerate;
+		goto re_enumerate_no_bos;
 	}
+
+	bos = udev->bos;
+	udev->bos = NULL;
 
 	for (i = 0; i < SET_CONFIG_TRIES; ++i) {
 
@@ -5456,10 +5445,11 @@ done:
 	return 0;
 
 re_enumerate:
-	/* LPM state doesn't matter when we're about to destroy the device. */
-	hub_port_logical_disconnect(parent_hub, port1);
 	usb_release_bos_descriptor(udev);
 	udev->bos = bos;
+re_enumerate_no_bos:
+	/* LPM state doesn't matter when we're about to destroy the device. */
+	hub_port_logical_disconnect(parent_hub, port1);
 	return -ENODEV;
 }
 
@@ -5591,26 +5581,19 @@ EXPORT_SYMBOL_GPL(usb_reset_device);
  *   possible; depending on how the driver attached to each interface
  *   handles ->pre_reset(), the second reset might happen or not.
  *
- * - If a driver is unbound and it had a pending reset, the reset will
- *   be cancelled.
+ * - If the reset is delayed so long that the interface is unbound from
+ *   its driver, the reset will be skipped.
  *
- * - This function can be called during .probe() or .disconnect()
- *   times. On return from .disconnect(), any pending resets will be
- *   cancelled.
- *
- * There is no no need to lock/unlock the @reset_ws as schedule_work()
- * does its own.
- *
- * NOTE: We don't do any reference count tracking because it is not
- *     needed. The lifecycle of the work_struct is tied to the
- *     usb_interface. Before destroying the interface we cancel the
- *     work_struct, so the fact that work_struct is queued and or
- *     running means the interface (and thus, the device) exist and
- *     are referenced.
+ * - This function can be called during .probe().  It can also be called
+ *   during .disconnect(), but doing so is pointless because the reset
+ *   will not occur.  If you really want to reset the device during
+ *   .disconnect(), call usb_reset_device() directly -- but watch out
+ *   for nested unbinding issues!
  */
 void usb_queue_reset_device(struct usb_interface *iface)
 {
-	schedule_work(&iface->reset_ws);
+	if (schedule_work(&iface->reset_ws))
+		usb_get_intf(iface);
 }
 EXPORT_SYMBOL_GPL(usb_queue_reset_device);
 
