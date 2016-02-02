@@ -178,7 +178,7 @@ int pnotify_handle_event(struct fsnotify_group *group,
                 data_type, pid, buffer);
           }
           else {
-            len = buffer - page;
+            len = PAGE_SIZE - (buffer - page) - 1;
           }
         }
        }
@@ -202,7 +202,7 @@ int pnotify_handle_event(struct fsnotify_group *group,
                 data_type, pid, buffer);
           }
           else {
-            len = buffer - page;
+            len = PAGE_SIZE - (buffer - page) - 1;
           }
           
         }
@@ -230,7 +230,6 @@ int pnotify_handle_event(struct fsnotify_group *group,
 	fsnotify_init_event(fsn_event, inode, mask);
 	event->wd = i_mark->wd;
 	event->sync_cookie = cookie;
-	event->name_len = len;
 
 	event->tgid = tgid;
 	event->pid = pid;
