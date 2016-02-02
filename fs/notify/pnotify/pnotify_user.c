@@ -1036,6 +1036,7 @@ static struct fsnotify_group *pnotify_new_group(unsigned int max_events)
 
   if (atomic_inc_return(&group->pnotify_data.user->pnotify_devs) >
       pnotify_max_user_instances) {
+    kfree(oevent);
     fsnotify_put_group(group);
     return ERR_PTR(-EMFILE);
   }
