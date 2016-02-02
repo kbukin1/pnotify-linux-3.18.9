@@ -1034,7 +1034,7 @@ static int pagemap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	struct vm_area_struct *vma;
 	struct pagemapread *pm = walk->private;
 	spinlock_t *ptl;
-	pte_t *pte, *orig_pte;
+	pte_t *pte;
 	int err = 0;
 
 	/* find the first VMA at or above 'addr' */
@@ -1095,19 +1095,15 @@ static int pagemap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 		BUG_ON(is_vm_hugetlb_page(vma));
 
 		/* Addresses in the VMA. */
-		orig_pte = pte = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
-		for (; addr < min(end, vma->vm_end); pte++, addr += PAGE_SIZE) {
+		for (; addr < min(end, vma->vm_end); addr += PAGE_SIZE) {
 			pagemap_entry_t pme;
-
+			pte = pte_offset_map(pmd, addr);
 			pte_to_pagemap_entry(&pme, pm, vma, addr, *pte);
+			pte_unmap(pte);
 			err = add_to_pagemap(addr, &pme, pm);
 			if (err)
-				break;
+				return err;
 		}
-		pte_unmap_unlock(orig_pte, ptl);
-
-		if (err)
-			return err;
 
 		if (addr == end)
 			break;

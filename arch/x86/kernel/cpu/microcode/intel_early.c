@@ -650,7 +650,8 @@ static inline void print_ucode(struct ucode_cpu_info *uci)
 }
 #endif
 
-static int apply_microcode_early(struct ucode_cpu_info *uci, bool early)
+static int apply_microcode_early(struct mc_saved_data *mc_saved_data,
+				 struct ucode_cpu_info *uci)
 {
 	struct microcode_intel *mc_intel;
 	unsigned int val[2];
@@ -679,10 +680,7 @@ static int apply_microcode_early(struct ucode_cpu_info *uci, bool early)
 #endif
 	uci->cpu_sig.rev = val[1];
 
-	if (early)
-		print_ucode(uci);
-	else
-		print_ucode_info(uci, mc_intel->hdr.date);
+	print_ucode(uci);
 
 	return 0;
 }
@@ -717,17 +715,12 @@ _load_ucode_intel_bsp(struct mc_saved_data *mc_saved_data,
 		      unsigned long initrd_end_early,
 		      struct ucode_cpu_info *uci)
 {
-	enum ucode_state ret;
-
 	collect_cpu_info_early(uci);
 	scan_microcode(initrd_start_early, initrd_end_early, mc_saved_data,
 		       mc_saved_in_initrd, uci);
-
-	ret = load_microcode(mc_saved_data, mc_saved_in_initrd,
-			     initrd_start_early, uci);
-
-	if (ret == UCODE_OK)
-		apply_microcode_early(uci, true);
+	load_microcode(mc_saved_data, mc_saved_in_initrd,
+		       initrd_start_early, uci);
+	apply_microcode_early(mc_saved_data, uci);
 }
 
 void __init
@@ -756,8 +749,7 @@ load_ucode_intel_bsp(void)
 	initrd_end_early = initrd_start_early + ramdisk_size;
 
 	_load_ucode_intel_bsp(&mc_saved_data, mc_saved_in_initrd,
-			      initrd_start_early, initrd_end_early,
-			      &uci);
+			      initrd_start_early, initrd_end_early, &uci);
 #endif
 }
 
@@ -791,23 +783,5 @@ void load_ucode_intel_ap(void)
 	collect_cpu_info_early(&uci);
 	load_microcode(mc_saved_data_p, mc_saved_in_initrd_p,
 		       initrd_start_addr, &uci);
-	apply_microcode_early(&uci, true);
-}
-
-void reload_ucode_intel(void)
-{
-	struct ucode_cpu_info uci;
-	enum ucode_state ret;
-
-	if (!mc_saved_data.mc_saved_count)
-		return;
-
-	collect_cpu_info_early(&uci);
-
-	ret = generic_load_microcode_early(mc_saved_data.mc_saved,
-					   mc_saved_data.mc_saved_count, &uci);
-	if (ret != UCODE_OK)
-		return;
-
-	apply_microcode_early(&uci, false);
+	apply_microcode_early(mc_saved_data_p, &uci);
 }

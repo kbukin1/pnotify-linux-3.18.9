@@ -222,13 +222,7 @@ struct cache {
 	struct list_head need_commit_migrations;
 	sector_t migration_threshold;
 	wait_queue_head_t migration_wait;
-	atomic_t nr_allocated_migrations;
-
-	/*
-	 * The number of in flight migrations that are performing
-	 * background io. eg, promotion, writeback.
-	 */
-	atomic_t nr_io_migrations;
+	atomic_t nr_migrations;
 
 	wait_queue_head_t quiescing_wait;
 	atomic_t quiescing;
@@ -264,6 +258,7 @@ struct cache {
 	struct dm_deferred_set *all_io_ds;
 
 	mempool_t *migration_pool;
+	struct dm_cache_migration *next_migration;
 
 	struct dm_cache_policy *policy;
 	unsigned policy_nr_args;
@@ -354,31 +349,10 @@ static void free_prison_cell(struct cache *cache, struct dm_bio_prison_cell *cel
 	dm_bio_prison_free_cell(cache->prison, cell);
 }
 
-static struct dm_cache_migration *alloc_migration(struct cache *cache)
-{
-	struct dm_cache_migration *mg;
-
-	mg = mempool_alloc(cache->migration_pool, GFP_NOWAIT);
-	if (mg) {
-		mg->cache = cache;
-		atomic_inc(&mg->cache->nr_allocated_migrations);
-	}
-
-	return mg;
-}
-
-static void free_migration(struct dm_cache_migration *mg)
-{
-	if (atomic_dec_and_test(&mg->cache->nr_allocated_migrations))
-		wake_up(&mg->cache->migration_wait);
-
-	mempool_free(mg, mg->cache->migration_pool);
-}
-
 static int prealloc_data_structs(struct cache *cache, struct prealloc *p)
 {
 	if (!p->mg) {
-		p->mg = alloc_migration(cache);
+		p->mg = mempool_alloc(cache->migration_pool, GFP_NOWAIT);
 		if (!p->mg)
 			return -ENOMEM;
 	}
@@ -407,7 +381,7 @@ static void prealloc_free_structs(struct cache *cache, struct prealloc *p)
 		free_prison_cell(cache, p->cell1);
 
 	if (p->mg)
-		free_migration(p->mg);
+		mempool_free(p->mg, cache->migration_pool);
 }
 
 static struct dm_cache_migration *prealloc_get_migration(struct prealloc *p)
@@ -843,14 +817,24 @@ static void remap_to_origin_then_cache(struct cache *cache, struct bio *bio,
  * Migration covers moving data from the origin device to the cache, or
  * vice versa.
  *--------------------------------------------------------------*/
-static void inc_io_migrations(struct cache *cache)
+static void free_migration(struct dm_cache_migration *mg)
 {
-	atomic_inc(&cache->nr_io_migrations);
+	mempool_free(mg, mg->cache->migration_pool);
 }
 
-static void dec_io_migrations(struct cache *cache)
+static void inc_nr_migrations(struct cache *cache)
 {
-	atomic_dec(&cache->nr_io_migrations);
+	atomic_inc(&cache->nr_migrations);
+}
+
+static void dec_nr_migrations(struct cache *cache)
+{
+	atomic_dec(&cache->nr_migrations);
+
+	/*
+	 * Wake the worker in case we're suspending the target.
+	 */
+	wake_up(&cache->migration_wait);
 }
 
 static void __cell_defer(struct cache *cache, struct dm_bio_prison_cell *cell,
@@ -873,10 +857,11 @@ static void cell_defer(struct cache *cache, struct dm_bio_prison_cell *cell,
 	wake_worker(cache);
 }
 
-static void free_io_migration(struct dm_cache_migration *mg)
+static void cleanup_migration(struct dm_cache_migration *mg)
 {
-	dec_io_migrations(mg->cache);
+	struct cache *cache = mg->cache;
 	free_migration(mg);
+	dec_nr_migrations(cache);
 }
 
 static void migration_failure(struct dm_cache_migration *mg)
@@ -901,7 +886,7 @@ static void migration_failure(struct dm_cache_migration *mg)
 		cell_defer(cache, mg->new_ocell, true);
 	}
 
-	free_io_migration(mg);
+	cleanup_migration(mg);
 }
 
 static void migration_success_pre_commit(struct dm_cache_migration *mg)
@@ -912,7 +897,7 @@ static void migration_success_pre_commit(struct dm_cache_migration *mg)
 	if (mg->writeback) {
 		clear_dirty(cache, mg->old_oblock, mg->cblock);
 		cell_defer(cache, mg->old_ocell, false);
-		free_io_migration(mg);
+		cleanup_migration(mg);
 		return;
 
 	} else if (mg->demote) {
@@ -922,14 +907,14 @@ static void migration_success_pre_commit(struct dm_cache_migration *mg)
 					     mg->old_oblock);
 			if (mg->promote)
 				cell_defer(cache, mg->new_ocell, true);
-			free_io_migration(mg);
+			cleanup_migration(mg);
 			return;
 		}
 	} else {
 		if (dm_cache_insert_mapping(cache->cmd, mg->cblock, mg->new_oblock)) {
 			DMWARN_LIMIT("promotion failed; couldn't update on disk metadata");
 			policy_remove_mapping(cache->policy, mg->new_oblock);
-			free_io_migration(mg);
+			cleanup_migration(mg);
 			return;
 		}
 	}
@@ -962,22 +947,18 @@ static void migration_success_post_commit(struct dm_cache_migration *mg)
 		} else {
 			if (mg->invalidate)
 				policy_remove_mapping(cache->policy, mg->old_oblock);
-			free_io_migration(mg);
+			cleanup_migration(mg);
 		}
 
 	} else {
-		if (mg->requeue_holder) {
-			clear_dirty(cache, mg->new_oblock, mg->cblock);
+		clear_dirty(cache, mg->new_oblock, mg->cblock);
+		if (mg->requeue_holder)
 			cell_defer(cache, mg->new_ocell, true);
-		} else {
-			/*
-			 * The block was promoted via an overwrite, so it's dirty.
-			 */
-			set_dirty(cache, mg->new_oblock, mg->cblock);
+		else {
 			bio_endio(mg->new_ocell->holder, 0);
 			cell_defer(cache, mg->new_ocell, false);
 		}
-		free_io_migration(mg);
+		cleanup_migration(mg);
 	}
 }
 
@@ -1089,8 +1070,7 @@ static void issue_copy(struct dm_cache_migration *mg)
 
 		avoid = is_discarded_oblock(cache, mg->new_oblock);
 
-		if (writeback_mode(&cache->features) &&
-		    !avoid && bio_writes_complete_block(cache, bio)) {
+		if (!avoid && bio_writes_complete_block(cache, bio)) {
 			issue_overwrite(mg, bio);
 			return;
 		}
@@ -1193,7 +1173,7 @@ static void promote(struct cache *cache, struct prealloc *structs,
 	mg->new_ocell = cell;
 	mg->start_jiffies = jiffies;
 
-	inc_io_migrations(cache);
+	inc_nr_migrations(cache);
 	quiesce_migration(mg);
 }
 
@@ -1216,7 +1196,7 @@ static void writeback(struct cache *cache, struct prealloc *structs,
 	mg->new_ocell = NULL;
 	mg->start_jiffies = jiffies;
 
-	inc_io_migrations(cache);
+	inc_nr_migrations(cache);
 	quiesce_migration(mg);
 }
 
@@ -1242,7 +1222,7 @@ static void demote_then_promote(struct cache *cache, struct prealloc *structs,
 	mg->new_ocell = new_ocell;
 	mg->start_jiffies = jiffies;
 
-	inc_io_migrations(cache);
+	inc_nr_migrations(cache);
 	quiesce_migration(mg);
 }
 
@@ -1269,7 +1249,7 @@ static void invalidate(struct cache *cache, struct prealloc *structs,
 	mg->new_ocell = NULL;
 	mg->start_jiffies = jiffies;
 
-	inc_io_migrations(cache);
+	inc_nr_migrations(cache);
 	quiesce_migration(mg);
 }
 
@@ -1335,7 +1315,7 @@ static void process_discard_bio(struct cache *cache, struct bio *bio)
 
 static bool spare_migration_bandwidth(struct cache *cache)
 {
-	sector_t current_volume = (atomic_read(&cache->nr_io_migrations) + 1) *
+	sector_t current_volume = (atomic_read(&cache->nr_migrations) + 1) *
 		cache->sectors_per_block;
 	return current_volume < cache->migration_threshold;
 }
@@ -1685,7 +1665,7 @@ static void stop_quiescing(struct cache *cache)
 
 static void wait_for_migrations(struct cache *cache)
 {
-	wait_event(cache->migration_wait, !atomic_read(&cache->nr_allocated_migrations));
+	wait_event(cache->migration_wait, !atomic_read(&cache->nr_migrations));
 }
 
 static void stop_worker(struct cache *cache)
@@ -1796,6 +1776,9 @@ static int cache_is_congested(struct dm_target_callbacks *cb, int bdi_bits)
 static void destroy(struct cache *cache)
 {
 	unsigned i;
+
+	if (cache->next_migration)
+		mempool_free(cache->next_migration, cache->migration_pool);
 
 	if (cache->migration_pool)
 		mempool_destroy(cache->migration_pool);
@@ -2304,8 +2287,7 @@ static int cache_create(struct cache_args *ca, struct cache **result)
 	INIT_LIST_HEAD(&cache->quiesced_migrations);
 	INIT_LIST_HEAD(&cache->completed_migrations);
 	INIT_LIST_HEAD(&cache->need_commit_migrations);
-	atomic_set(&cache->nr_allocated_migrations, 0);
-	atomic_set(&cache->nr_io_migrations, 0);
+	atomic_set(&cache->nr_migrations, 0);
 	init_waitqueue_head(&cache->migration_wait);
 
 	init_waitqueue_head(&cache->quiescing_wait);
@@ -2363,6 +2345,8 @@ static int cache_create(struct cache_args *ca, struct cache **result)
 		*error = "Error creating cache's migration mempool";
 		goto bad;
 	}
+
+	cache->next_migration = NULL;
 
 	cache->need_tick_bio = true;
 	cache->sized = false;
@@ -2565,11 +2549,11 @@ static int __cache_map(struct cache *cache, struct bio *bio, struct dm_bio_priso
 static int cache_map(struct dm_target *ti, struct bio *bio)
 {
 	int r;
-	struct dm_bio_prison_cell *cell = NULL;
+	struct dm_bio_prison_cell *cell;
 	struct cache *cache = ti->private;
 
 	r = __cache_map(cache, bio, &cell);
-	if (r == DM_MAPIO_REMAPPED && cell) {
+	if (r == DM_MAPIO_REMAPPED) {
 		inc_ds(cache, bio, cell);
 		cell_defer(cache, cell, false);
 	}

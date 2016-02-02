@@ -51,7 +51,6 @@ targets += cpustr.h
 $(obj)/cpustr.h: $(obj)/mkcpustr FORCE
 	$(call if_changed,cpustr)
 endif
-clean-files += cpustr.h
 
 # ---------------------------------------------------------------------------
 

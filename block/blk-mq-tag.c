@@ -137,7 +137,6 @@ static inline bool hctx_may_queue(struct blk_mq_hw_ctx *hctx,
 static int __bt_get_word(struct blk_align_bitmap *bm, unsigned int last_tag)
 {
 	int tag, org_last_tag, end;
-	bool wrap = last_tag != 0;
 
 	org_last_tag = last_tag;
 	end = bm->depth;
@@ -149,16 +148,15 @@ restart:
 			 * We started with an offset, start from 0 to
 			 * exhaust the map.
 			 */
-			if (wrap) {
-				wrap = false;
-				end = org_last_tag;
+			if (org_last_tag && last_tag) {
+				end = last_tag;
 				last_tag = 0;
 				goto restart;
 			}
 			return -1;
 		}
 		last_tag = tag + 1;
-	} while (test_and_set_bit(tag, &bm->word));
+	} while (test_and_set_bit_lock(tag, &bm->word));
 
 	return tag;
 }
@@ -342,10 +340,11 @@ static void bt_clear_tag(struct blk_mq_bitmap_tags *bt, unsigned int tag)
 	struct bt_wait_state *bs;
 	int wait_cnt;
 
-	clear_bit(TAG_TO_BIT(bt, tag), &bt->map[index].word);
-
-	/* Ensure that the wait list checks occur after clear_bit(). */
-	smp_mb();
+	/*
+	 * The unlock memory barrier need to order access to req in free
+	 * path and clearing tag bit
+	 */
+	clear_bit_unlock(TAG_TO_BIT(bt, tag), &bt->map[index].word);
 
 	bs = bt_wake_ptr(bt);
 	if (!bs)
@@ -500,7 +499,6 @@ static int bt_alloc(struct blk_mq_bitmap_tags *bt, unsigned int depth,
 	bt->bs = kzalloc(BT_WAIT_QUEUES * sizeof(*bt->bs), GFP_KERNEL);
 	if (!bt->bs) {
 		kfree(bt->map);
-		bt->map = NULL;
 		return -ENOMEM;
 	}
 

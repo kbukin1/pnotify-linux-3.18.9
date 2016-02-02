@@ -3571,9 +3571,7 @@ sub test_this_config {
     undef %configs;
     assign_configs \%configs, $output_config;
 
-    if (!defined($configs{$config}) || $configs{$config} =~ /^#/) {
-	return $config;
-    }
+    return $config if (!defined($configs{$config}));
 
     doprint "disabling config $config did not change .config\n";
 

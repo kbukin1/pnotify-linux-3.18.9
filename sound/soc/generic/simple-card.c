@@ -453,8 +453,9 @@ static int asoc_simple_card_parse_of(struct device_node *node,
 }
 
 /* Decrease the reference count of the device nodes */
-static int asoc_simple_card_unref(struct snd_soc_card *card)
+static int asoc_simple_card_unref(struct platform_device *pdev)
 {
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
 	struct snd_soc_dai_link *dai_link;
 	struct device_node *np;
 	int num_links;
@@ -561,7 +562,7 @@ static int asoc_simple_card_probe(struct platform_device *pdev)
 		return ret;
 
 err:
-	asoc_simple_card_unref(&priv->snd_card);
+	asoc_simple_card_unref(pdev);
 	return ret;
 }
 
@@ -577,7 +578,7 @@ static int asoc_simple_card_remove(struct platform_device *pdev)
 		snd_soc_jack_free_gpios(&simple_card_mic_jack, 1,
 					&simple_card_mic_jack_gpio);
 
-	return asoc_simple_card_unref(card);
+	return asoc_simple_card_unref(pdev);
 }
 
 static const struct of_device_id asoc_simple_of_match[] = {

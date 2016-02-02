@@ -1841,11 +1841,17 @@ static void pool_mayday_timeout(unsigned long __pool)
  * spin_lock_irq(pool->lock) which may be released and regrabbed
  * multiple times.  Does GFP_KERNEL allocations.  Called only from
  * manager.
+ *
+ * Return:
+ * %false if no action was taken and pool->lock stayed locked, %true
+ * otherwise.
  */
-static void maybe_create_worker(struct worker_pool *pool)
+static bool maybe_create_worker(struct worker_pool *pool)
 __releases(&pool->lock)
 __acquires(&pool->lock)
 {
+	if (!need_to_create_worker(pool))
+		return false;
 restart:
 	spin_unlock_irq(&pool->lock);
 
@@ -1871,6 +1877,7 @@ restart:
 	 */
 	if (need_to_create_worker(pool))
 		goto restart;
+	return true;
 }
 
 /**
@@ -1890,14 +1897,16 @@ restart:
  * multiple times.  Does GFP_KERNEL allocations.
  *
  * Return:
- * %false if the pool doesn't need management and the caller can safely
- * start processing works, %true if management function was performed and
- * the conditions that the caller verified before calling the function may
- * no longer be true.
+ * %false if the pool don't need management and the caller can safely start
+ * processing works, %true indicates that the function released pool->lock
+ * and reacquired it to perform some management function and that the
+ * conditions that the caller verified while holding the lock before
+ * calling the function might no longer be true.
  */
 static bool manage_workers(struct worker *worker)
 {
 	struct worker_pool *pool = worker->pool;
+	bool ret = false;
 
 	/*
 	 * Anyone who successfully grabs manager_arb wins the arbitration
@@ -1910,12 +1919,12 @@ static bool manage_workers(struct worker *worker)
 	 * actual management, the pool may stall indefinitely.
 	 */
 	if (!mutex_trylock(&pool->manager_arb))
-		return false;
+		return ret;
 
-	maybe_create_worker(pool);
+	ret |= maybe_create_worker(pool);
 
 	mutex_unlock(&pool->manager_arb);
-	return true;
+	return ret;
 }
 
 /**

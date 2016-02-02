@@ -738,4 +738,3 @@ void *get_xsave_addr(struct xsave_struct *xsave, int xstate)
 
 	return (void *)xsave + xstate_comp_offsets[feature];
 }
-EXPORT_SYMBOL_GPL(get_xsave_addr);

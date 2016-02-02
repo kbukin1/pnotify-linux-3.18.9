@@ -405,15 +405,12 @@ void __exit unregister_nfs_fs(void)
 	unregister_filesystem(&nfs_fs_type);
 }
 
-bool nfs_sb_active(struct super_block *sb)
+void nfs_sb_active(struct super_block *sb)
 {
 	struct nfs_server *server = NFS_SB(sb);
 
-	if (!atomic_inc_not_zero(&sb->s_active))
-		return false;
-	if (atomic_inc_return(&server->active) != 1)
-		atomic_dec(&sb->s_active);
-	return true;
+	if (atomic_inc_return(&server->active) == 1)
+		atomic_inc(&sb->s_active);
 }
 EXPORT_SYMBOL_GPL(nfs_sb_active);
 

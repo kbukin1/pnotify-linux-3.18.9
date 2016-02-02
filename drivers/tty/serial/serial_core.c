@@ -2102,9 +2102,7 @@ uart_report_port(struct uart_driver *drv, struct uart_port *port)
 		break;
 	}
 
-	printk(KERN_INFO "%s%s%s%d at %s (irq = %d, base_baud = %d) is a %s\n",
-	       port->dev ? dev_name(port->dev) : "",
-	       port->dev ? ": " : "",
+	dev_info(port->dev, "%s%d at %s (irq = %d, base_baud = %d) is a %s\n",
 	       drv->dev_name,
 	       drv->tty_driver->name_base + port->line,
 	       address, port->irq, port->uartclk / 16, uart_type(port));

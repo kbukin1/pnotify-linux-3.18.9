@@ -99,34 +99,28 @@ extern void paging_init(void);
 
 #define htw_stop()							\
 do {									\
-	unsigned long flags;						\
-									\
-	if (cpu_has_htw) {						\
-		local_irq_save(flags);					\
-		if(!raw_current_cpu_data.htw_seq++) {			\
-			write_c0_pwctl(read_c0_pwctl() &		\
-				       ~(1 << MIPS_PWCTL_PWEN_SHIFT));	\
-			back_to_back_c0_hazard();			\
-		}							\
-		local_irq_restore(flags);				\
-	}								\
+	if (cpu_has_htw)						\
+		write_c0_pwctl(read_c0_pwctl() &			\
+			       ~(1 << MIPS_PWCTL_PWEN_SHIFT));		\
 } while(0)
 
 #define htw_start()							\
 do {									\
-	unsigned long flags;						\
-									\
-	if (cpu_has_htw) {						\
-		local_irq_save(flags);					\
-		if (!--raw_current_cpu_data.htw_seq) {			\
-			write_c0_pwctl(read_c0_pwctl() |		\
-				       (1 << MIPS_PWCTL_PWEN_SHIFT));	\
-			back_to_back_c0_hazard();			\
-		}							\
-		local_irq_restore(flags);				\
-	}								\
+	if (cpu_has_htw)						\
+		write_c0_pwctl(read_c0_pwctl() |			\
+			       (1 << MIPS_PWCTL_PWEN_SHIFT));		\
 } while(0)
 
+
+#define htw_reset()							\
+do {									\
+	if (cpu_has_htw) {						\
+		htw_stop();						\
+		back_to_back_c0_hazard();				\
+		htw_start();						\
+		back_to_back_c0_hazard();				\
+	}								\
+} while(0)
 
 extern void set_pte_at(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
 	pte_t pteval);
@@ -159,13 +153,12 @@ static inline void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *pt
 {
 	pte_t null = __pte(0);
 
-	htw_stop();
 	/* Preserve global status for the pair */
 	if (ptep_buddy(ptep)->pte_low & _PAGE_GLOBAL)
 		null.pte_low = null.pte_high = _PAGE_GLOBAL;
 
 	set_pte_at(mm, addr, ptep, null);
-	htw_start();
+	htw_reset();
 }
 #else
 
@@ -195,7 +188,6 @@ static inline void set_pte(pte_t *ptep, pte_t pteval)
 
 static inline void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *ptep)
 {
-	htw_stop();
 #if !defined(CONFIG_CPU_R3000) && !defined(CONFIG_CPU_TX39XX)
 	/* Preserve global status for the pair */
 	if (pte_val(*ptep_buddy(ptep)) & _PAGE_GLOBAL)
@@ -203,7 +195,7 @@ static inline void pte_clear(struct mm_struct *mm, unsigned long addr, pte_t *pt
 	else
 #endif
 		set_pte_at(mm, addr, ptep, __pte(0));
-	htw_start();
+	htw_reset();
 }
 #endif
 

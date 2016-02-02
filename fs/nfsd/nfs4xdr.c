@@ -1795,12 +1795,9 @@ static __be32 nfsd4_encode_components_esc(struct xdr_stream *xdr, char sep,
 		}
 		else
 			end++;
-		if (found_esc)
-			end = next;
-
 		str = end;
 	}
-	pathlen = htonl(count);
+	pathlen = htonl(xdr->buf->len - pathlen_offset);
 	write_bytes_to_xdr_buf(xdr->buf, pathlen_offset, &pathlen, 4);
 	return 0;
 }

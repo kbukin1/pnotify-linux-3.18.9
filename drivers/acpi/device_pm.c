@@ -257,7 +257,7 @@ int acpi_bus_init_power(struct acpi_device *device)
 
 	device->power.state = ACPI_STATE_UNKNOWN;
 	if (!acpi_device_is_present(device))
-		return -ENXIO;
+		return 0;
 
 	result = acpi_device_get_power(device, &state);
 	if (result)
@@ -680,21 +680,13 @@ static int acpi_device_wakeup(struct acpi_device *adev, u32 target_state,
 		if (error)
 			return error;
 
-		if (adev->wakeup.flags.enabled)
-			return 0;
-
 		res = acpi_enable_gpe(wakeup->gpe_device, wakeup->gpe_number);
-		if (ACPI_SUCCESS(res)) {
-			adev->wakeup.flags.enabled = 1;
-		} else {
+		if (ACPI_FAILURE(res)) {
 			acpi_disable_wakeup_device_power(adev);
 			return -EIO;
 		}
 	} else {
-		if (adev->wakeup.flags.enabled) {
-			acpi_disable_gpe(wakeup->gpe_device, wakeup->gpe_number);
-			adev->wakeup.flags.enabled = 0;
-		}
+		acpi_disable_gpe(wakeup->gpe_device, wakeup->gpe_number);
 		acpi_disable_wakeup_device_power(adev);
 	}
 	return 0;

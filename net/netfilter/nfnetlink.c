@@ -321,8 +321,7 @@ replay:
 		nlh = nlmsg_hdr(skb);
 		err = 0;
 
-		if (nlmsg_len(nlh) < sizeof(struct nfgenmsg) ||
-		    skb->len < nlh->nlmsg_len) {
+		if (nlh->nlmsg_len < NLMSG_HDRLEN) {
 			err = -EINVAL;
 			goto ack;
 		}
@@ -470,7 +469,7 @@ static int nfnetlink_bind(int group)
 	int type;
 
 	if (group <= NFNLGRP_NONE || group > NFNLGRP_MAX)
-		return 0;
+		return -EINVAL;
 
 	type = nfnl_group2type[group];
 

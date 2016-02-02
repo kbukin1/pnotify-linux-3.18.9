@@ -530,22 +530,6 @@ static void img_ir_set_decoder(struct img_ir_priv *priv,
 	u32 ir_status, irq_en;
 	spin_lock_irq(&priv->lock);
 
-	/*
-	 * First record that the protocol is being stopped so that the end timer
-	 * isn't restarted while we're trying to stop it.
-	 */
-	hw->stopping = true;
-
-	/*
-	 * Release the lock to stop the end timer, since the end timer handler
-	 * acquires the lock and we don't want to deadlock waiting for it.
-	 */
-	spin_unlock_irq(&priv->lock);
-	del_timer_sync(&hw->end_timer);
-	spin_lock_irq(&priv->lock);
-
-	hw->stopping = false;
-
 	/* switch off and disable interrupts */
 	img_ir_write(priv, IMG_IR_CONTROL, 0);
 	irq_en = img_ir_read(priv, IMG_IR_IRQ_ENABLE);
@@ -557,13 +541,12 @@ static void img_ir_set_decoder(struct img_ir_priv *priv,
 	if (ir_status & (IMG_IR_RXDVAL | IMG_IR_RXDVALD2)) {
 		ir_status &= ~(IMG_IR_RXDVAL | IMG_IR_RXDVALD2);
 		img_ir_write(priv, IMG_IR_STATUS, ir_status);
+		img_ir_read(priv, IMG_IR_DATA_LW);
+		img_ir_read(priv, IMG_IR_DATA_UP);
 	}
 
-	/* always read data to clear buffer if IR wakes the device */
-	img_ir_read(priv, IMG_IR_DATA_LW);
-	img_ir_read(priv, IMG_IR_DATA_UP);
-
-	/* switch back to normal mode */
+	/* stop the end timer and switch back to normal mode */
+	del_timer_sync(&hw->end_timer);
 	hw->mode = IMG_IR_M_NORMAL;
 
 	/* clear the wakeup scancode filter */
@@ -834,8 +817,7 @@ static void img_ir_handle_data(struct img_ir_priv *priv, u32 len, u64 raw)
 	}
 
 
-	/* we mustn't update the end timer while trying to stop it */
-	if (dec->repeat && !hw->stopping) {
+	if (dec->repeat) {
 		unsigned long interval;
 
 		img_ir_begin_repeat(priv);

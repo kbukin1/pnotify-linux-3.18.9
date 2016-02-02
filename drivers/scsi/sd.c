@@ -2818,11 +2818,9 @@ static int sd_revalidate_disk(struct gendisk *disk)
 	 */
 	sd_set_flush_flag(sdkp);
 
-	max_xfer = sdkp->max_xfer_blocks;
-	max_xfer <<= ilog2(sdp->sector_size) - 9;
-
 	max_xfer = min_not_zero(queue_max_hw_sectors(sdkp->disk->queue),
-				max_xfer);
+				sdkp->max_xfer_blocks);
+	max_xfer <<= ilog2(sdp->sector_size) - 9;
 	blk_queue_max_hw_sectors(sdkp->disk->queue, max_xfer);
 	set_capacity(disk, sdkp->capacity);
 	sd_config_write_same(sdkp);

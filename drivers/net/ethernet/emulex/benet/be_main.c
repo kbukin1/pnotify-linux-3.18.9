@@ -4427,11 +4427,9 @@ static void be_del_vxlan_port(struct net_device *netdev, sa_family_t sa_family,
 		 be16_to_cpu(port));
 }
 
-static netdev_features_t be_features_check(struct sk_buff *skb,
-					   struct net_device *dev,
-					   netdev_features_t features)
+static bool be_gso_check(struct sk_buff *skb, struct net_device *dev)
 {
-	return vxlan_features_check(skb, features);
+	return vxlan_gso_check(skb);
 }
 #endif
 
@@ -4462,7 +4460,7 @@ static const struct net_device_ops be_netdev_ops = {
 #ifdef CONFIG_BE2NET_VXLAN
 	.ndo_add_vxlan_port	= be_add_vxlan_port,
 	.ndo_del_vxlan_port	= be_del_vxlan_port,
-	.ndo_features_check	= be_features_check,
+	.ndo_gso_check		= be_gso_check,
 #endif
 };
 

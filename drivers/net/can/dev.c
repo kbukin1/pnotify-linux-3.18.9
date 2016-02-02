@@ -729,14 +729,10 @@ static int can_changelink(struct net_device *dev,
 		if (dev->flags & IFF_UP)
 			return -EBUSY;
 		cm = nla_data(data[IFLA_CAN_CTRLMODE]);
-
-		/* check whether changed bits are allowed to be modified */
-		if (cm->mask & ~priv->ctrlmode_supported)
+		if (cm->flags & ~priv->ctrlmode_supported)
 			return -EOPNOTSUPP;
-
-		/* clear bits to be modified and copy the flag values */
 		priv->ctrlmode &= ~cm->mask;
-		priv->ctrlmode |= (cm->flags & cm->mask);
+		priv->ctrlmode |= cm->flags;
 
 		/* CAN_CTRLMODE_FD can only be set when driver supports FD */
 		if (priv->ctrlmode & CAN_CTRLMODE_FD)

@@ -35,7 +35,7 @@ struct vmw_fence_manager {
 	struct vmw_private *dev_priv;
 	spinlock_t lock;
 	struct list_head fence_list;
-	struct work_struct work;
+	struct work_struct work, ping_work;
 	u32 user_fence_size;
 	u32 fence_size;
 	u32 event_fence_action_size;
@@ -134,6 +134,14 @@ static const char *vmw_fence_get_timeline_name(struct fence *f)
 	return "svga";
 }
 
+static void vmw_fence_ping_func(struct work_struct *work)
+{
+	struct vmw_fence_manager *fman =
+		container_of(work, struct vmw_fence_manager, ping_work);
+
+	vmw_fifo_ping_host(fman->dev_priv, SVGA_SYNC_GENERIC);
+}
+
 static bool vmw_fence_enable_signaling(struct fence *f)
 {
 	struct vmw_fence_obj *fence =
@@ -147,7 +155,11 @@ static bool vmw_fence_enable_signaling(struct fence *f)
 	if (seqno - fence->base.seqno < VMW_FENCE_WRAP)
 		return false;
 
-	vmw_fifo_ping_host(dev_priv, SVGA_SYNC_GENERIC);
+	if (mutex_trylock(&dev_priv->hw_mutex)) {
+		vmw_fifo_ping_host_locked(dev_priv, SVGA_SYNC_GENERIC);
+		mutex_unlock(&dev_priv->hw_mutex);
+	} else
+		schedule_work(&fman->ping_work);
 
 	return true;
 }
@@ -293,6 +305,7 @@ struct vmw_fence_manager *vmw_fence_manager_init(struct vmw_private *dev_priv)
 	INIT_LIST_HEAD(&fman->fence_list);
 	INIT_LIST_HEAD(&fman->cleanup_list);
 	INIT_WORK(&fman->work, &vmw_fence_work_func);
+	INIT_WORK(&fman->ping_work, &vmw_fence_ping_func);
 	fman->fifo_down = true;
 	fman->user_fence_size = ttm_round_pot(sizeof(struct vmw_user_fence));
 	fman->fence_size = ttm_round_pot(sizeof(struct vmw_fence_obj));
@@ -310,6 +323,7 @@ void vmw_fence_manager_takedown(struct vmw_fence_manager *fman)
 	bool lists_empty;
 
 	(void) cancel_work_sync(&fman->work);
+	(void) cancel_work_sync(&fman->ping_work);
 
 	spin_lock_irqsave(&fman->lock, irq_flags);
 	lists_empty = list_empty(&fman->fence_list) &&
@@ -531,19 +545,35 @@ void vmw_fence_obj_flush(struct vmw_fence_obj *fence)
 
 static void vmw_fence_destroy(struct vmw_fence_obj *fence)
 {
+	struct vmw_fence_manager *fman = fman_from_fence(fence);
+
 	fence_free(&fence->base);
+
+	/*
+	 * Free kernel space accounting.
+	 */
+	ttm_mem_global_free(vmw_mem_glob(fman->dev_priv),
+			    fman->fence_size);
 }
 
 int vmw_fence_create(struct vmw_fence_manager *fman,
 		     uint32_t seqno,
 		     struct vmw_fence_obj **p_fence)
 {
+	struct ttm_mem_global *mem_glob = vmw_mem_glob(fman->dev_priv);
 	struct vmw_fence_obj *fence;
 	int ret;
 
+	ret = ttm_mem_global_alloc(mem_glob, fman->fence_size,
+				   false, false);
+	if (unlikely(ret != 0))
+		return ret;
+
 	fence = kzalloc(sizeof(*fence), GFP_KERNEL);
-	if (unlikely(fence == NULL))
-		return -ENOMEM;
+	if (unlikely(fence == NULL)) {
+		ret = -ENOMEM;
+		goto out_no_object;
+	}
 
 	ret = vmw_fence_obj_init(fman, fence, seqno,
 				 vmw_fence_destroy);
@@ -555,6 +585,8 @@ int vmw_fence_create(struct vmw_fence_manager *fman,
 
 out_err_init:
 	kfree(fence);
+out_no_object:
+	ttm_mem_global_free(mem_glob, fman->fence_size);
 	return ret;
 }
 
@@ -1073,8 +1105,6 @@ static int vmw_event_fence_action_create(struct drm_file *file_priv,
 	if (ret != 0)
 		goto out_no_queue;
 
-	return 0;
-
 out_no_queue:
 	event->base.destroy(&event->base);
 out_no_event:
@@ -1150,10 +1180,17 @@ int vmw_fence_event_ioctl(struct drm_device *dev, void *data,
 
 	BUG_ON(fence == NULL);
 
-	ret = vmw_event_fence_action_create(file_priv, fence,
-					    arg->flags,
-					    arg->user_data,
-					    true);
+	if (arg->flags & DRM_VMW_FE_FLAG_REQ_TIME)
+		ret = vmw_event_fence_action_create(file_priv, fence,
+						    arg->flags,
+						    arg->user_data,
+						    true);
+	else
+		ret = vmw_event_fence_action_create(file_priv, fence,
+						    arg->flags,
+						    arg->user_data,
+						    true);
+
 	if (unlikely(ret != 0)) {
 		if (ret != -ERESTARTSYS)
 			DRM_ERROR("Failed to attach event to fence.\n");

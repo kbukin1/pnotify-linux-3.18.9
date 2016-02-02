@@ -79,9 +79,6 @@ struct Qdisc {
 	struct netdev_queue	*dev_queue;
 
 	struct gnet_stats_rate_est64	rate_est;
-	struct gnet_stats_basic_cpu __percpu *cpu_bstats;
-	struct gnet_stats_queue	__percpu *cpu_qstats;
-
 	struct Qdisc		*next_sched;
 	struct sk_buff		*gso_skb;
 	/*
@@ -89,9 +86,15 @@ struct Qdisc {
 	 */
 	unsigned long		state;
 	struct sk_buff_head	q;
-	struct gnet_stats_basic_packed bstats;
+	union {
+		struct gnet_stats_basic_packed bstats;
+		struct gnet_stats_basic_cpu __percpu *cpu_bstats;
+	} __packed;
 	unsigned int		__state;
-	struct gnet_stats_queue	qstats;
+	union {
+		struct gnet_stats_queue	qstats;
+		struct gnet_stats_queue	__percpu *cpu_qstats;
+	} __packed;
 	struct rcu_head		rcu_head;
 	int			padded;
 	atomic_t		refcnt;

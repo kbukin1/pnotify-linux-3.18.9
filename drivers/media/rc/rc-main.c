@@ -1021,16 +1021,16 @@ static ssize_t store_protocols(struct device *device,
 		goto out;
 	}
 
-	if (new_protocols != old_protocols) {
-		*current_protocols = new_protocols;
-		IR_dprintk(1, "Protocols changed to 0x%llx\n",
-			   (long long)new_protocols);
+	if (new_protocols == old_protocols) {
+		rc = len;
+		goto out;
 	}
 
+	*current_protocols = new_protocols;
+	IR_dprintk(1, "Protocols changed to 0x%llx\n", (long long)new_protocols);
+
 	/*
-	 * If a protocol change was attempted the filter may need updating, even
-	 * if the actual protocol mask hasn't changed (since the driver may have
-	 * cleared the filter).
+	 * If the protocol is changed the filter needs updating.
 	 * Try setting the same filter with the new protocol (if any).
 	 * Fall back to clearing the filter.
 	 */

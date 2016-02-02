@@ -208,7 +208,7 @@ ddq_add_8:
 
 	.if (klen == KEY_128)
 		.if (load_keys)
-			vmovdqa	3*16(p_keys), xkey4
+			vmovdqa	3*16(p_keys), xkeyA
 		.endif
 	.else
 		vmovdqa	3*16(p_keys), xkeyA
@@ -224,7 +224,7 @@ ddq_add_8:
 	add	$(16*by), p_in
 
 	.if (klen == KEY_128)
-		vmovdqa	4*16(p_keys), xkeyB
+		vmovdqa	4*16(p_keys), xkey4
 	.else
 		.if (load_keys)
 			vmovdqa	4*16(p_keys), xkey4
@@ -234,12 +234,7 @@ ddq_add_8:
 	.set i, 0
 	.rept by
 		club XDATA, i
-		/* key 3 */
-		.if (klen == KEY_128)
-			vaesenc	xkey4, var_xdata, var_xdata
-		.else
-			vaesenc	xkeyA, var_xdata, var_xdata
-		.endif
+		vaesenc	xkeyA, var_xdata, var_xdata		/* key 3 */
 		.set i, (i +1)
 	.endr
 
@@ -248,18 +243,13 @@ ddq_add_8:
 	.set i, 0
 	.rept by
 		club XDATA, i
-		/* key 4 */
-		.if (klen == KEY_128)
-			vaesenc	xkeyB, var_xdata, var_xdata
-		.else
-			vaesenc	xkey4, var_xdata, var_xdata
-		.endif
+		vaesenc	xkey4, var_xdata, var_xdata		/* key 4 */
 		.set i, (i +1)
 	.endr
 
 	.if (klen == KEY_128)
 		.if (load_keys)
-			vmovdqa	6*16(p_keys), xkey8
+			vmovdqa	6*16(p_keys), xkeyB
 		.endif
 	.else
 		vmovdqa	6*16(p_keys), xkeyB
@@ -277,17 +267,12 @@ ddq_add_8:
 	.set i, 0
 	.rept by
 		club XDATA, i
-		/* key 6 */
-		.if (klen == KEY_128)
-			vaesenc	xkey8, var_xdata, var_xdata
-		.else
-			vaesenc	xkeyB, var_xdata, var_xdata
-		.endif
+		vaesenc	xkeyB, var_xdata, var_xdata		/* key 6 */
 		.set i, (i +1)
 	.endr
 
 	.if (klen == KEY_128)
-		vmovdqa	8*16(p_keys), xkeyB
+		vmovdqa	8*16(p_keys), xkey8
 	.else
 		.if (load_keys)
 			vmovdqa	8*16(p_keys), xkey8
@@ -303,7 +288,7 @@ ddq_add_8:
 
 	.if (klen == KEY_128)
 		.if (load_keys)
-			vmovdqa	9*16(p_keys), xkey12
+			vmovdqa	9*16(p_keys), xkeyA
 		.endif
 	.else
 		vmovdqa	9*16(p_keys), xkeyA
@@ -312,12 +297,7 @@ ddq_add_8:
 	.set i, 0
 	.rept by
 		club XDATA, i
-		/* key 8 */
-		.if (klen == KEY_128)
-			vaesenc	xkeyB, var_xdata, var_xdata
-		.else
-			vaesenc	xkey8, var_xdata, var_xdata
-		.endif
+		vaesenc	xkey8, var_xdata, var_xdata		/* key 8 */
 		.set i, (i +1)
 	.endr
 
@@ -326,12 +306,7 @@ ddq_add_8:
 	.set i, 0
 	.rept by
 		club XDATA, i
-		/* key 9 */
-		.if (klen == KEY_128)
-			vaesenc	xkey12, var_xdata, var_xdata
-		.else
-			vaesenc	xkeyA, var_xdata, var_xdata
-		.endif
+		vaesenc	xkeyA, var_xdata, var_xdata		/* key 9 */
 		.set i, (i +1)
 	.endr
 
@@ -437,6 +412,7 @@ ddq_add_8:
 /* main body of aes ctr load */
 
 .macro do_aes_ctrmain key_len
+
 	cmp	$16, num_bytes
 	jb	.Ldo_return2\key_len
 

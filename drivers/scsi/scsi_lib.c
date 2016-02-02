@@ -1829,9 +1829,7 @@ static int scsi_mq_prep_fn(struct request *req)
 
 	if (scsi_host_get_prot(shost)) {
 		cmd->prot_sdb = (void *)sg +
-			min_t(unsigned int,
-			      shost->sg_tablesize, SCSI_MAX_SG_SEGMENTS) *
-			sizeof(struct scatterlist);
+			shost->sg_tablesize * sizeof(struct scatterlist);
 		memset(cmd->prot_sdb, 0, sizeof(struct scsi_data_buffer));
 
 		cmd->prot_sdb->table.sgl =
